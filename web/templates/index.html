@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Business Expense Tracker</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+
+    <header>
+        <div class="container">
+            <h1>Business Tracker</h1>
+            <p>Manage your business expenses simply.</p>
+        </div>
+    </header>
+
+    <main class="container">
+
+        <section class="summary-card">
+            <h2>Total Expenses</h2>
+            <p class="total">KSh {{ "%.2f"|format(total) }}</p>
+        </section>
+
+        <section class="form-card">
+            <h2>Add New Expense</h2>
+
+            <form action="{{ url_for('add_new_expense') }}"
+                  method="POST">
+
+                <label for="amount">Amount (KSh)</label>
+                <input
+                    type="number"
+                    id="amount"
+                    name="amount"
+                    min="0.01"
+                    step="0.01"
+                    placeholder="e.g. 250.00"
+                    required
+                >
+
+                <label for="category">Category</label>
+                <input
+                    type="text"
+                    id="category"
+                    name="category"
+                    placeholder="e.g. Transport"
+                    required
+                >
+
+                <label for="description">Description</label>
+                <input
+                    type="text"
+                    id="description"
+                    name="description"
+                    placeholder="What was the expense?"
+                >
+
+                <label for="expense_date">Date</label>
+                <input
+                    type="date"
+                    id="expense_date"
+                    name="expense_date"
+                    value="{{ today }}"
+                    required
+                >
+
+                <button type="submit">Add Expense</button>
+
+            </form>
+        </section>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <section class="messages">
+                    {% for category, message in messages %}
+                        <div class="message {{ category }}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </section>
+            {% endif %}
+        {% endwith %}
+
+        <section class="expenses-card">
+            <h2>Expense History</h2>
+
+            {% if expenses %}
+
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Category</th>
+                                <th>Description</th>
+                                <th>Amount</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            {% for expense in expenses %}
+                                <tr>
+                                    <td data-label="Date">
+                                        {{ expense["expense_date"] }}
+                                    </td>
+
+                                    <td data-label="Category">
+                                        {{ expense["category"] }}
+                                    </td>
+
+                                    <td data-label="Description">
+                                        {{ expense["description"] or "-" }}
+                                    </td>
+
+                                    <td data-label="Amount">
+                                        KSh {{ "%.2f"|format(expense["amount_cents"] / 100) }}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+            {% else %}
+
+                <p class="empty-message">
+                    No expenses recorded yet.
+                </p>
+
+            {% endif %}
+        </section>
+
+    </main>
+
+    <footer>
+        <p>Business Expense Tracker &copy; 2026</p>
+    </footer>
+
+</body>
+</html>
