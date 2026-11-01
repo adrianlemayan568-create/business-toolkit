@@ -209,5 +209,80 @@ class TestExpenses(unittest.TestCase):
         self.assertEqual(result["second_month_total"], 100000)
         self.assertIsNone(result["percentage_change"])
 
+
+    def test_update_existing_expense(self):
+        expense_id = expenses.add_expense(
+            100, "Food", "Lunch", "2026-11-01"
+        )
+
+        result = expenses.update_expense(
+            expense_id, 250.50, "Transport", "Bus fare", "2026-11-02"
+        )
+
+        self.assertTrue(result)
+
+        records = expenses.view_expenses()
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["id"], expense_id)
+        self.assertEqual(records[0]["amount_cents"], 25050)
+        self.assertEqual(records[0]["category"], "Transport")
+        self.assertEqual(records[0]["description"], "Bus fare")
+        self.assertEqual(records[0]["expense_date"], "2026-11-02")
+
+    def test_update_nonexistent_expense(self):
+        result = expenses.update_expense(
+            999, 100, "Food", "Lunch", "2026-11-01"
+        )
+        self.assertFalse(result)
+
+    def test_update_rejects_zero_amount(self):
+        expense_id = expenses.add_expense(100, "Food")
+
+        with self.assertRaises(ValueError):
+            expenses.update_expense(
+                expense_id, 0, "Food"
+            )
+
+    def test_update_rejects_negative_amount(self):
+        expense_id = expenses.add_expense(100, "Food")
+
+        with self.assertRaises(ValueError):
+            expenses.update_expense(
+                expense_id, -50, "Food"
+            )
+
+    def test_update_rejects_more_than_two_decimal_places(self):
+        expense_id = expenses.add_expense(100, "Food")
+
+        with self.assertRaises(ValueError):
+            expenses.update_expense(
+                expense_id, 100.999, "Food"
+            )
+
+    def test_update_rejects_empty_category(self):
+        expense_id = expenses.add_expense(100, "Food")
+
+        with self.assertRaises(ValueError):
+            expenses.update_expense(
+                expense_id, 150, "   "
+            )
+
+    def test_update_rejects_invalid_date(self):
+        expense_id = expenses.add_expense(100, "Food")
+
+        with self.assertRaises(ValueError):
+            expenses.update_expense(
+                expense_id, 150, "Food", "Lunch", "invalid-date"
+            )
+
+    def test_update_rejects_invalid_expense_id(self):
+        for invalid_id in (0, -1, "1", True):
+            with self.subTest(expense_id=invalid_id):
+                with self.assertRaises(ValueError):
+                    expenses.update_expense(
+                        invalid_id, 150, "Food"
+                    )
+
 if __name__ == "__main__":
     unittest.main()

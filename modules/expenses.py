@@ -204,3 +204,96 @@ def compare_monthly_expenses(year1, month1, year2, month2):
         "percentage_change": percentage_change
     }
 
+
+
+def update_expense(expense_id, amount, category, description="", expense_date=None):
+    """Update an existing expense using its ID."""
+
+    # Validate expense ID
+    if isinstance(expense_id, bool) or not isinstance(expense_id, int) or expense_id <= 0:
+        raise ValueError("Invalid expense ID.")
+
+    # Validate amount
+    try:
+        amount = Decimal(str(amount))
+    except (InvalidOperation, ValueError):
+        raise ValueError("Invalid expense amount.")
+
+    if not amount.is_finite() or amount <= 0:
+        raise ValueError("Amount must be greater than zero.")
+
+    # Convert KES to cents
+    cents = amount * 100
+
+    if cents != cents.to_integral_value():
+        raise ValueError("Amount cannot have more than two decimal places.")
+
+    amount_cents = int(cents)
+
+    # Validate category
+    category = category.strip()
+
+    if not category:
+        raise ValueError("Category cannot be empty.")
+
+    # Validate date
+    if expense_date is None:
+        expense_date = date.today().isoformat()
+    else:
+        try:
+            expense_date = date.fromisoformat(expense_date).isoformat()
+        except ValueError:
+            raise ValueError("Date must use YYYY-MM-DD format.")
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.execute(
+            """
+            UPDATE expenses
+            SET amount_cents = ?,
+                category = ?,
+                description = ?,
+                expense_date = ?
+            WHERE id = ?
+            """,
+            (
+                amount_cents,
+                category,
+                description.strip(),
+                expense_date,
+                expense_id
+            )
+        )
+
+        connection.commit()
+
+        return cursor.rowcount > 0
+
+    finally:
+        connection.close()
+
+
+def get_expense(expense_id):
+    """Retrieve one expense by its ID."""
+
+    if isinstance(expense_id, bool) or not isinstance(expense_id, int) or expense_id <= 0:
+        raise ValueError("Invalid expense ID.")
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.execute(
+            """
+            SELECT id, amount_cents, category,
+                   description, expense_date
+            FROM expenses
+            WHERE id = ?
+            """,
+            (expense_id,)
+        )
+
+        return cursor.fetchone()
+
+    finally:
+        connection.close()

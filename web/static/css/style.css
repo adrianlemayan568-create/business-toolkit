@@ -186,6 +186,30 @@ th {
     color: #991b1b;
 }
 
+/* Edit expense button */
+
+.edit-button {
+    display: inline-block;
+    margin-right: 8px;
+    padding: 8px 12px;
+    background: #2563eb;
+    color: white;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: bold;
+    text-decoration: none;
+    text-align: center;
+}
+
+.edit-button:hover {
+    background: #1d4ed8;
+}
+
+.edit-button:focus-visible {
+    outline: 3px solid #93c5fd;
+    outline-offset: 3px;
+}
+
 /* Delete expense button */
 
 .delete-form {

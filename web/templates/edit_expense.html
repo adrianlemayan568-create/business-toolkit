@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Edit Expense - Business Tracker</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}"
+    >
+</head>
+<body>
+
+    <header>
+        <h1>Business Tracker</h1>
+        <p>Edit Expense</p>
+    </header>
+
+    <main class="container">
+
+        <section class="form-section">
+            <h2>Edit Expense #{{ expense["id"] }}</h2>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-messages">
+                        {% for category, message in messages %}
+                            <div class="flash {{ category }}">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            <form
+                action="{{ url_for('edit_expense_route', expense_id=expense['id']) }}"
+                method="POST"
+            >
+
+                <label for="amount">Amount (KSh)</label>
+                <input
+                    type="number"
+                    id="amount"
+                    name="amount"
+                    min="0.01"
+                    step="0.01"
+                    value="{{ form_values['amount'] if form_values else '%.2f'|format(expense['amount_cents'] / 100) }}"
+                    required
+                >
+
+                <label for="category">Category</label>
+                <input
+                    type="text"
+                    id="category"
+                    name="category"
+                    value="{{ form_values['category'] if form_values else expense['category'] }}"
+                    required
+                >
+
+                <label for="description">Description</label>
+                <input
+                    type="text"
+                    id="description"
+                    name="description"
+                    value="{{ form_values['description'] if form_values else expense['description'] }}"
+                >
+
+                <label for="expense_date">Date</label>
+                <input
+                    type="date"
+                    id="expense_date"
+                    name="expense_date"
+                    value="{{ form_values['expense_date'] if form_values else expense['expense_date'] }}"
+                    required
+                >
+
+                <button type="submit">
+                    Save Changes
+                </button>
+
+                <a href="{{ url_for('index') }}" class="cancel-button">
+                    Cancel
+                </a>
+
+            </form>
+        </section>
+
+    </main>
+
+    <footer>
+        <p>Business Tracker</p>
+    </footer>
+
+</body>
+</html>

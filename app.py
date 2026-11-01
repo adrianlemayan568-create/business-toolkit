@@ -11,16 +11,20 @@ from flask import (
 )
 
 from database.db import initialize_database
+
 from modules.expenses import (
     add_expense,
     view_expenses,
+    get_expense,
     get_total_expenses,
     get_monthly_total,
     get_monthly_category_totals,
     compare_monthly_expenses,
     delete_expense,
+    update_expense,
     export_expenses
 )
+
 
 app = Flask(
     __name__,
@@ -38,24 +42,37 @@ initialize_database()
 def index():
     today = date.today()
 
-    # Read the selected month from the URL.
-    selected_month = request.args.get("month", today.strftime("%Y-%m"))
+    selected_month = request.args.get(
+        "month",
+        today.strftime("%Y-%m")
+    )
 
     try:
-        selected_date = date.fromisoformat(selected_month + "-01")
+        selected_date = date.fromisoformat(
+            selected_month + "-01"
+        )
     except ValueError:
         selected_date = today.replace(day=1)
         selected_month = selected_date.strftime("%Y-%m")
-        flash("Invalid month selected. Showing the current month.", "error")
+
+        flash(
+            "Invalid month selected. Showing the current month.",
+            "error"
+        )
 
     year = selected_date.year
     month = selected_date.month
 
-    # Determine the previous calendar month.
-    previous_month_date = selected_date.replace(day=1) - timedelta(days=1)
+    previous_month_date = (
+        selected_date.replace(day=1) - timedelta(days=1)
+    )
 
     monthly_total = get_monthly_total(year, month)
-    category_totals = get_monthly_category_totals(year, month)
+
+    category_totals = get_monthly_category_totals(
+        year,
+        month
+    )
 
     comparison = compare_monthly_expenses(
         previous_month_date.year,
@@ -76,8 +93,12 @@ def index():
         monthly_total=monthly_total / 100,
         category_totals=category_totals,
         comparison=comparison,
-        previous_month_label=previous_month_date.strftime("%B %Y"),
-        selected_month_label=selected_date.strftime("%B %Y")
+        previous_month_label=previous_month_date.strftime(
+            "%B %Y"
+        ),
+        selected_month_label=selected_date.strftime(
+            "%B %Y"
+        )
     )
 
 
@@ -104,14 +125,80 @@ def add_new_expense():
     return redirect(url_for("index"))
 
 
-@app.route("/delete-expense/<int:expense_id>", methods=["POST"])
+@app.route(
+    "/edit-expense/<int:expense_id>",
+    methods=["GET", "POST"]
+)
+def edit_expense_route(expense_id):
+
+    expense = get_expense(expense_id)
+
+    if expense is None:
+        flash("Expense not found.", "error")
+        return redirect(url_for("index"))
+
+    form_values = None
+
+    if request.method == "POST":
+        amount = request.form.get("amount", "")
+        category = request.form.get("category", "")
+        description = request.form.get("description", "")
+        expense_date = request.form.get("expense_date", "")
+
+        try:
+            updated = update_expense(
+                expense_id=expense_id,
+                amount=amount,
+                category=category,
+                description=description,
+                expense_date=expense_date
+            )
+
+            if updated:
+                flash(
+                    "Expense updated successfully!",
+                    "success"
+                )
+            else:
+                flash(
+                    "Expense not found. Nothing was updated.",
+                    "error"
+                )
+
+            return redirect(url_for("index"))
+
+        except (ValueError, TypeError) as error:
+            flash(str(error), "error")
+
+            # Preserve submitted values if validation fails.
+            form_values = {
+                "amount": amount,
+                "category": category,
+                "description": description,
+                "expense_date": expense_date
+            }
+
+    return render_template(
+        "edit_expense.html",
+        expense=expense,
+        form_values=form_values
+    )
+
+
+@app.route(
+    "/delete-expense/<int:expense_id>",
+    methods=["POST"]
+)
 def delete_expense_route(expense_id):
     deleted = delete_expense(expense_id)
 
     if deleted:
         flash("Expense deleted successfully.", "success")
     else:
-        flash("Expense not found. Nothing was deleted.", "error")
+        flash(
+            "Expense not found. Nothing was deleted.",
+            "error"
+        )
 
     return redirect(url_for("index"))
 

@@ -58,6 +58,97 @@ class TestExpenseRoutes(unittest.TestCase):
         mock_delete.assert_not_called()
 
 
+
+class TestEditExpenseRoute(unittest.TestCase):
+
+    def setUp(self):
+        app.config["TESTING"] = True
+        self.client = app.test_client()
+
+    def sample_expense(self):
+        return {
+            "id": 1,
+            "amount_cents": 25000,
+            "category": "Food",
+            "description": "Lunch",
+            "expense_date": "2026-11-01",
+        }
+
+    @patch("app.get_expense")
+    def test_edit_existing_expense_loads_form(self, mock_get_expense):
+        mock_get_expense.return_value = self.sample_expense()
+
+        response = self.client.get("/edit-expense/1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Edit Expense", response.data)
+        self.assertIn(b"Food", response.data)
+        mock_get_expense.assert_called_once_with(1)
+
+    @patch("app.get_expense", return_value=None)
+    def test_edit_nonexistent_expense_redirects(self, mock_get_expense):
+        response = self.client.get("/edit-expense/999")
+
+        self.assertEqual(response.status_code, 302)
+        mock_get_expense.assert_called_once_with(999)
+
+        with self.client.session_transaction() as session:
+            flashes = session.get("_flashes", [])
+
+        self.assertIn(("error", "Expense not found."), flashes)
+
+    @patch("app.update_expense", return_value=True)
+    @patch("app.get_expense")
+    def test_successful_expense_update(self, mock_get_expense, mock_update):
+        mock_get_expense.return_value = self.sample_expense()
+
+        response = self.client.post(
+            "/edit-expense/1",
+            data={
+                "amount": "300.00",
+                "category": "Transport",
+                "description": "Bus fare",
+                "expense_date": "2026-11-02",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        mock_update.assert_called_once_with(
+            expense_id=1,
+            amount="300.00",
+            category="Transport",
+            description="Bus fare",
+            expense_date="2026-11-02",
+        )
+
+        with self.client.session_transaction() as session:
+            flashes = session.get("_flashes", [])
+
+        self.assertIn(("success", "Expense updated successfully!"), flashes)
+
+    @patch("app.update_expense", side_effect=ValueError("Amount must be positive."))
+    @patch("app.get_expense")
+    def test_invalid_update_preserves_form_values(
+        self, mock_get_expense, mock_update
+    ):
+        mock_get_expense.return_value = self.sample_expense()
+
+        response = self.client.post(
+            "/edit-expense/1",
+            data={
+                "amount": "-50",
+                "category": "Transport",
+                "description": "Bus fare",
+                "expense_date": "2026-11-02",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"-50", response.data)
+        self.assertIn(b"Transport", response.data)
+        self.assertIn(b"Bus fare", response.data)
+        mock_update.assert_called_once()
+
 class TestMonthlyReportRoute(unittest.TestCase):
 
     def setUp(self):
