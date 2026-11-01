@@ -1,6 +1,14 @@
 from datetime import date, timedelta
 
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import (
+    Flask,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    flash,
+    send_file
+)
 
 from database.db import initialize_database
 from modules.expenses import (
@@ -10,7 +18,8 @@ from modules.expenses import (
     get_monthly_total,
     get_monthly_category_totals,
     compare_monthly_expenses,
-    delete_expense
+    delete_expense,
+    export_expenses
 )
 
 app = Flask(
@@ -105,6 +114,18 @@ def delete_expense_route(expense_id):
         flash("Expense not found. Nothing was deleted.", "error")
 
     return redirect(url_for("index"))
+
+
+@app.route("/export-expenses")
+def export_expenses_route():
+    csv_file = export_expenses()
+
+    return send_file(
+        csv_file,
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name="expenses.csv"
+    )
 
 
 if __name__ == "__main__":

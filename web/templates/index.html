@@ -26,6 +26,16 @@
             <p class="total">KSh {{ "%.2f"|format(total) }}</p>
         </section>
 
+        <section class="export-card">
+            <h2>Export Your Data</h2>
+            <p>Download all your recorded expenses as a CSV file.</p>
+
+            <a href="{{ url_for('export_expenses_route') }}"
+               class="export-button">
+                Download CSV
+            </a>
+        </section>
+
         <section class="reports-card">
             <h2>Monthly Reports</h2>
 
@@ -60,23 +70,18 @@
                 <h3>Spending by Category</h3>
 
                 {% if category_totals %}
-
                     {% for category in category_totals %}
                         <div class="category-row">
                             <span>{{ category["category"] }}</span>
-
                             <strong>
                                 KSh {{ "%.2f"|format(category["total_cents"] / 100) }}
                             </strong>
                         </div>
                     {% endfor %}
-
                 {% else %}
-
                     <p class="empty-message">
                         No expenses recorded for this month.
                     </p>
-
                 {% endif %}
             </div>
 
@@ -195,7 +200,6 @@
             <h2>Expense History</h2>
 
             {% if expenses %}
-
                 <div class="table-wrapper">
                     <table>
                         <thead>
@@ -247,13 +251,10 @@
                         </tbody>
                     </table>
                 </div>
-
             {% else %}
-
                 <p class="empty-message">
                     No expenses recorded yet.
                 </p>
-
             {% endif %}
         </section>
 

@@ -1,4 +1,7 @@
 import unittest
+import tempfile
+
+from pathlib import Path
 from unittest.mock import patch
 
 from app import app
@@ -125,6 +128,53 @@ class TestMonthlyReportRoute(unittest.TestCase):
             b"Invalid month selected. Showing the current month.",
             response.data
         )
+
+
+class TestExportRoute(unittest.TestCase):
+
+    def setUp(self):
+        app.config["TESTING"] = True
+        self.client = app.test_client()
+
+    def test_csv_download_returns_correct_file(self):
+        csv_content = (
+            "ID,Amount (KSh),Category,Description,Date\n"
+            "1,250.00,Food,Lunch,2026-11-01\n"
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            csv_path = Path(directory) / "expenses.csv"
+            csv_path.write_text(csv_content, encoding="utf-8")
+
+            with patch(
+                "app.export_expenses",
+                return_value=csv_path
+            ) as mock_export:
+
+                response = self.client.get("/export-expenses")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "text/csv")
+
+        self.assertIn(
+            "attachment",
+            response.headers["Content-Disposition"]
+        )
+
+        self.assertIn(
+            "expenses.csv",
+            response.headers["Content-Disposition"]
+        )
+
+        self.assertEqual(response.data.decode("utf-8"), csv_content)
+        response.close()
+
+        mock_export.assert_called_once()
+
+    def test_post_request_cannot_access_export_route(self):
+        response = self.client.post("/export-expenses")
+
+        self.assertEqual(response.status_code, 405)
 
 
 if __name__ == "__main__":
