@@ -197,3 +197,22 @@ footer {
         text-align: left;
     }
 }
+
+.delete-form {
+    display: inline;
+}
+
+.delete-button {
+    margin: 0;
+    padding: 8px 12px;
+    background: #dc2626;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.delete-button:hover {
+    background: #b91c1c;
+}

@@ -99,6 +99,7 @@
                                 <th>Category</th>
                                 <th>Description</th>
                                 <th>Amount</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
 
@@ -119,6 +120,22 @@
 
                                     <td data-label="Amount">
                                         KSh {{ "%.2f"|format(expense["amount_cents"] / 100) }}
+                                    </td>
+
+                                    <td data-label="Actions">
+                                        <form
+                                            action="{{ url_for('delete_expense_route', expense_id=expense['id']) }}"
+                                            method="POST"
+                                            class="delete-form"
+                                            onsubmit="return confirm('Are you sure you want to delete this expense?');"
+                                        >
+                                            <button
+                                                type="submit"
+                                                class="delete-button"
+                                            >
+                                                Delete
+                                            </button>
+                                        </form>
                                     </td>
                                 </tr>
                             {% endfor %}

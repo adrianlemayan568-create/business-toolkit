@@ -6,7 +6,8 @@ from database.db import initialize_database
 from modules.expenses import (
     add_expense,
     view_expenses,
-    get_total_expenses
+    get_total_expenses,
+    delete_expense
 )
 
 app = Flask(
@@ -53,6 +54,18 @@ def add_new_expense():
 
     except (ValueError, TypeError) as error:
         flash(str(error), "error")
+
+    return redirect(url_for("index"))
+
+
+@app.route("/delete-expense/<int:expense_id>", methods=["POST"])
+def delete_expense_route(expense_id):
+    deleted = delete_expense(expense_id)
+
+    if deleted:
+        flash("Expense deleted successfully.", "success")
+    else:
+        flash("Expense not found. Nothing was deleted.", "error")
 
     return redirect(url_for("index"))
 
