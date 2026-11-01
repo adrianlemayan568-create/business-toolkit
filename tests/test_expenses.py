@@ -2,9 +2,9 @@ import unittest
 import sqlite3
 import tempfile
 import csv
+
 from pathlib import Path
 from unittest.mock import patch
-
 from modules import expenses
 
 
@@ -35,6 +35,7 @@ class TestExpenses(unittest.TestCase):
             "modules.expenses.get_connection",
             self.get_test_connection
         )
+
         self.patcher.start()
 
     def get_test_connection(self):
@@ -50,9 +51,11 @@ class TestExpenses(unittest.TestCase):
         result = expenses.add_expense(
             100, "Food", "Lunch", "2026-11-01"
         )
+
         self.assertTrue(result)
 
         records = expenses.view_expenses()
+
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0]["amount_cents"], 10000)
 
@@ -118,7 +121,9 @@ class TestExpenses(unittest.TestCase):
 
         self.assertTrue(export_path.exists())
 
-        with open(export_path, "r", newline="", encoding="utf-8") as file:
+        with open(
+            export_path, "r", newline="", encoding="utf-8"
+        ) as file:
             reader = csv.reader(file)
             rows = list(reader)
 
@@ -136,6 +141,133 @@ class TestExpenses(unittest.TestCase):
         self.assertEqual(rows[2][1], "150.50")
         self.assertEqual(rows[2][2], "Food")
         self.assertEqual(rows[2][3], "Lunch")
+
+    # ------------------------------------------
+    # CSV FORMULA INJECTION SECURITY TESTS
+    # ------------------------------------------
+
+    def test_safe_csv_text_protects_formula_prefixes(self):
+        dangerous_values = [
+            "=SUM(1+1)",
+            "+123",
+            "-123",
+            "@SUM(A1:A2)"
+        ]
+
+        for value in dangerous_values:
+            with self.subTest(value=value):
+                result = expenses.safe_csv_text(value)
+
+                self.assertEqual(result, "'" + value)
+
+    def test_safe_csv_text_protects_leading_whitespace(self):
+        dangerous_values = [
+            " =SUM(1+1)",
+            "\t=SUM(1+1)",
+            "\n=SUM(1+1)",
+            "   +123",
+            "\t-123",
+            " @SUM(A1:A2)"
+        ]
+
+        for value in dangerous_values:
+            with self.subTest(value=value):
+                result = expenses.safe_csv_text(value)
+
+                self.assertEqual(result, "'" + value)
+
+    def test_safe_csv_text_protects_leading_control_characters(self):
+        dangerous_values = [
+            "\tHello",
+            "\rHello",
+            "\nHello"
+        ]
+
+        for value in dangerous_values:
+            with self.subTest(value=value):
+                self.assertEqual(
+                    expenses.safe_csv_text(value),
+                    "'" + value
+                )
+
+    def test_safe_csv_text_preserves_ordinary_text(self):
+        ordinary_values = [
+            "Food",
+            "Lunch",
+            "Bus fare",
+            "Monthly rent",
+            "",
+            "123",
+            "Food + transport"
+        ]
+
+        for value in ordinary_values:
+            with self.subTest(value=value):
+                self.assertEqual(
+                    expenses.safe_csv_text(value),
+                    value
+                )
+
+    def test_csv_export_sanitizes_malicious_text(self):
+        expenses.add_expense(
+            100,
+            "=SUM(A1:A2)",
+            "+CMD",
+            "2026-11-01"
+        )
+
+        test_export_dir = Path(self.temp_dir.name) / "exports"
+
+        with patch(
+            "pathlib.Path.resolve",
+            return_value=test_export_dir / "fake_module.py"
+        ):
+            export_path = expenses.export_expenses()
+
+        with open(
+            export_path,
+            "r",
+            newline="",
+            encoding="utf-8"
+        ) as file:
+            rows = list(csv.reader(file))
+
+        self.assertEqual(rows[1][2], "'=SUM(A1:A2)")
+        self.assertEqual(rows[1][3], "'+CMD")
+
+        # Numeric values must remain unchanged.
+        self.assertEqual(rows[1][1], "100.00")
+
+    def test_csv_export_preserves_normal_text(self):
+        expenses.add_expense(
+            100,
+            "Food",
+            "Lunch",
+            "2026-11-01"
+        )
+
+        test_export_dir = Path(self.temp_dir.name) / "exports"
+
+        with patch(
+            "pathlib.Path.resolve",
+            return_value=test_export_dir / "fake_module.py"
+        ):
+            export_path = expenses.export_expenses()
+
+        with open(
+            export_path,
+            "r",
+            newline="",
+            encoding="utf-8"
+        ) as file:
+            rows = list(csv.reader(file))
+
+        self.assertEqual(rows[1][2], "Food")
+        self.assertEqual(rows[1][3], "Lunch")
+
+    # ------------------------------------------
+    # MONTHLY REPORT TESTS
+    # ------------------------------------------
 
     def test_monthly_category_totals(self):
         expenses.add_expense(
@@ -168,6 +300,7 @@ class TestExpenses(unittest.TestCase):
         expenses.add_expense(
             3500, "Transport", "October expenses", "2026-10-15"
         )
+
         expenses.add_expense(
             2800, "Transport", "November expenses", "2026-11-15"
         )
@@ -179,12 +312,17 @@ class TestExpenses(unittest.TestCase):
         self.assertEqual(result["first_month_total"], 350000)
         self.assertEqual(result["second_month_total"], 280000)
         self.assertEqual(result["difference"], -70000)
-        self.assertAlmostEqual(result["percentage_change"], -20.0)
+
+        self.assertAlmostEqual(
+            result["percentage_change"],
+            -20.0
+        )
 
     def test_monthly_expenses_increase(self):
         expenses.add_expense(
             2000, "Food", "October expenses", "2026-10-15"
         )
+
         expenses.add_expense(
             3000, "Food", "November expenses", "2026-11-15"
         )
@@ -194,7 +332,11 @@ class TestExpenses(unittest.TestCase):
         )
 
         self.assertEqual(result["difference"], 100000)
-        self.assertAlmostEqual(result["percentage_change"], 50.0)
+
+        self.assertAlmostEqual(
+            result["percentage_change"],
+            50.0
+        )
 
     def test_monthly_comparison_with_zero_first_month(self):
         expenses.add_expense(
@@ -209,6 +351,9 @@ class TestExpenses(unittest.TestCase):
         self.assertEqual(result["second_month_total"], 100000)
         self.assertIsNone(result["percentage_change"])
 
+    # ------------------------------------------
+    # EXPENSE UPDATE TESTS
+    # ------------------------------------------
 
     def test_update_existing_expense(self):
         expense_id = expenses.add_expense(
@@ -216,7 +361,11 @@ class TestExpenses(unittest.TestCase):
         )
 
         result = expenses.update_expense(
-            expense_id, 250.50, "Transport", "Bus fare", "2026-11-02"
+            expense_id,
+            250.50,
+            "Transport",
+            "Bus fare",
+            "2026-11-02"
         )
 
         self.assertTrue(result)
@@ -234,6 +383,7 @@ class TestExpenses(unittest.TestCase):
         result = expenses.update_expense(
             999, 100, "Food", "Lunch", "2026-11-01"
         )
+
         self.assertFalse(result)
 
     def test_update_rejects_zero_amount(self):
@@ -283,6 +433,7 @@ class TestExpenses(unittest.TestCase):
                     expenses.update_expense(
                         invalid_id, 150, "Food"
                     )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -142,6 +143,10 @@
             <form action="{{ url_for('add_new_expense') }}"
                   method="POST">
 
+                <input type="hidden"
+                       name="csrf_token"
+                       value="{{ csrf_token() }}">
+
                 <label for="amount">Amount (KSh)</label>
                 <input
                     type="number"
@@ -245,6 +250,10 @@
                                             class="delete-form"
                                             onsubmit="return confirm('Are you sure you want to delete this expense?');"
                                         >
+                                            <input type="hidden"
+                                                   name="csrf_token"
+                                                   value="{{ csrf_token() }}">
+
                                             <button
                                                 type="submit"
                                                 class="delete-button"

@@ -1,3 +1,6 @@
+
+import os
+import secrets
 from datetime import date, timedelta
 
 from flask import (
@@ -9,6 +12,8 @@ from flask import (
     flash,
     send_file
 )
+
+from flask_wtf.csrf import CSRFProtect
 
 from database.db import initialize_database
 
@@ -32,11 +37,73 @@ app = Flask(
     static_folder="web/static"
 )
 
-# Development-only secret. Replace before deployment.
-app.secret_key = "development-secret-key"
+
+# --------------------------------------------------
+# APPLICATION ENVIRONMENT
+# --------------------------------------------------
+
+APP_ENV = os.environ.get(
+    "APP_ENV",
+    "development"
+).strip().lower()
+
+if APP_ENV not in {"development", "production"}:
+    raise RuntimeError(
+        "APP_ENV must be either development or production."
+    )
+
+
+# --------------------------------------------------
+# SECRET KEY CONFIGURATION
+# --------------------------------------------------
+
+SECRET_KEY = os.environ.get("SECRET_KEY")
+
+# Production must always use a persistent secret key.
+if APP_ENV == "production" and not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY must be configured in production."
+    )
+
+# A temporary random key is acceptable for local development.
+app.config["SECRET_KEY"] = (
+    SECRET_KEY or secrets.token_hex(32)
+)
+
+
+# --------------------------------------------------
+# SESSION COOKIE SECURITY
+# --------------------------------------------------
+
+# JavaScript cannot access the session cookie.
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+
+# Reduces cross-site cookie sending.
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+# Production cookies must only travel over HTTPS.
+app.config["SESSION_COOKIE_SECURE"] = (
+    APP_ENV == "production"
+)
+
+
+# --------------------------------------------------
+# CSRF PROTECTION
+# --------------------------------------------------
+
+csrf = CSRFProtect(app)
+
+
+# --------------------------------------------------
+# DATABASE INITIALIZATION
+# --------------------------------------------------
 
 initialize_database()
 
+
+# --------------------------------------------------
+# DASHBOARD
+# --------------------------------------------------
 
 @app.route("/")
 def index():
@@ -102,6 +169,10 @@ def index():
     )
 
 
+# --------------------------------------------------
+# ADD EXPENSE
+# --------------------------------------------------
+
 @app.route("/add-expense", methods=["POST"])
 def add_new_expense():
     amount = request.form.get("amount", "")
@@ -124,6 +195,10 @@ def add_new_expense():
 
     return redirect(url_for("index"))
 
+
+# --------------------------------------------------
+# EDIT EXPENSE
+# --------------------------------------------------
 
 @app.route(
     "/edit-expense/<int:expense_id>",
@@ -185,6 +260,10 @@ def edit_expense_route(expense_id):
     )
 
 
+# --------------------------------------------------
+# DELETE EXPENSE
+# --------------------------------------------------
+
 @app.route(
     "/delete-expense/<int:expense_id>",
     methods=["POST"]
@@ -203,6 +282,10 @@ def delete_expense_route(expense_id):
     return redirect(url_for("index"))
 
 
+# --------------------------------------------------
+# EXPORT EXPENSES
+# --------------------------------------------------
+
 @app.route("/export-expenses")
 def export_expenses_route():
     csv_file = export_expenses()
@@ -215,5 +298,14 @@ def export_expenses_route():
     )
 
 
+# --------------------------------------------------
+# APPLICATION ENTRY POINT
+# --------------------------------------------------
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    debug_mode = (
+        APP_ENV != "production"
+        and os.environ.get("FLASK_DEBUG") == "1"
+    )
+
+    app.run(debug=debug_mode)

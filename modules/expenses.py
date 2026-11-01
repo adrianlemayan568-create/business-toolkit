@@ -2,6 +2,7 @@ import csv
 
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 from database.db import get_connection
 
@@ -9,16 +10,14 @@ from database.db import get_connection
 def add_expense(amount, category, description="", expense_date=None):
     """Save a new expense in the database."""
 
-    # Validate amount
     try:
         amount = Decimal(str(amount))
-    except InvalidOperation:
+    except (InvalidOperation, ValueError):
         raise ValueError("Invalid expense amount.")
 
     if not amount.is_finite() or amount <= 0:
         raise ValueError("Amount must be greater than zero.")
 
-    # Convert KES to cents
     cents = amount * 100
 
     if cents != cents.to_integral_value():
@@ -26,19 +25,17 @@ def add_expense(amount, category, description="", expense_date=None):
 
     amount_cents = int(cents)
 
-    # Validate category
     category = category.strip()
 
     if not category:
         raise ValueError("Category cannot be empty.")
 
-    # Validate date
     if expense_date is None:
         expense_date = date.today().isoformat()
     else:
         try:
             expense_date = date.fromisoformat(expense_date).isoformat()
-        except ValueError:
+        except (ValueError, TypeError):
             raise ValueError("Date must use YYYY-MM-DD format.")
 
     connection = get_connection()
@@ -60,6 +57,7 @@ def add_expense(amount, category, description="", expense_date=None):
     finally:
         connection.close()
 
+
 def view_expenses():
     """Retrieve all recorded expenses."""
 
@@ -80,20 +78,26 @@ def view_expenses():
     finally:
         connection.close()
 
+
 def get_total_expenses():
     """Calculate the total of all recorded expenses."""
+
     connection = get_connection()
+
     try:
         cursor = connection.execute(
             "SELECT COALESCE(SUM(amount_cents), 0) FROM expenses"
         )
-        total_cents = cursor.fetchone()[0]
-        return total_cents
+
+        return cursor.fetchone()[0]
+
     finally:
         connection.close()
 
+
 def get_monthly_total(year, month):
     """Calculate expenses for a specific month."""
+
     connection = get_connection()
 
     try:
@@ -111,6 +115,7 @@ def get_monthly_total(year, month):
 
     finally:
         connection.close()
+
 
 def get_monthly_category_totals(year, month):
     """Calculate expense totals grouped by category for a specific month."""
@@ -135,8 +140,10 @@ def get_monthly_category_totals(year, month):
     finally:
         connection.close()
 
+
 def delete_expense(expense_id):
     """Delete an expense using its ID."""
+
     connection = get_connection()
 
     try:
@@ -144,15 +151,40 @@ def delete_expense(expense_id):
             "DELETE FROM expenses WHERE id = ?",
             (expense_id,)
         )
+
         connection.commit()
+
         return cursor.rowcount > 0
 
     finally:
         connection.close()
 
+
+def safe_csv_text(value):
+    """
+    Reduce CSV formula injection risks in spreadsheet applications.
+
+    Prefix potentially dangerous text cells with an apostrophe.
+    """
+
+    if not isinstance(value, str):
+        return value
+
+    stripped_value = value.lstrip(" \t\r\n")
+
+    dangerous_prefixes = ("=", "+", "-", "@")
+
+    if (
+        value.startswith(("\t", "\r", "\n"))
+        or stripped_value.startswith(dangerous_prefixes)
+    ):
+        return "'" + value
+
+    return value
+
+
 def export_expenses():
-    """Export all expenses to a CSV file."""
-    from pathlib import Path
+    """Export expenses to a CSV file with formula-injection mitigation."""
 
     expenses = view_expenses()
 
@@ -161,7 +193,13 @@ def export_expenses():
 
     file_path = export_dir / "expenses.csv"
 
-    with open(file_path, "w", newline="", encoding="utf-8") as file:
+    with open(
+        file_path,
+        "w",
+        newline="",
+        encoding="utf-8"
+    ) as file:
+
         writer = csv.writer(file)
 
         writer.writerow([
@@ -176,11 +214,13 @@ def export_expenses():
             writer.writerow([
                 expense["id"],
                 f'{expense["amount_cents"] / 100:.2f}',
-                expense["category"],
-                expense["description"],
+                safe_csv_text(expense["category"]),
+                safe_csv_text(expense["description"]),
                 expense["expense_date"]
             ])
-        return file_path
+
+    return file_path
+
 
 def compare_monthly_expenses(year1, month1, year2, month2):
     """Compare total expenses between two different months."""
@@ -205,15 +245,22 @@ def compare_monthly_expenses(year1, month1, year2, month2):
     }
 
 
-
-def update_expense(expense_id, amount, category, description="", expense_date=None):
+def update_expense(
+    expense_id,
+    amount,
+    category,
+    description="",
+    expense_date=None
+):
     """Update an existing expense using its ID."""
 
-    # Validate expense ID
-    if isinstance(expense_id, bool) or not isinstance(expense_id, int) or expense_id <= 0:
+    if (
+        isinstance(expense_id, bool)
+        or not isinstance(expense_id, int)
+        or expense_id <= 0
+    ):
         raise ValueError("Invalid expense ID.")
 
-    # Validate amount
     try:
         amount = Decimal(str(amount))
     except (InvalidOperation, ValueError):
@@ -222,7 +269,6 @@ def update_expense(expense_id, amount, category, description="", expense_date=No
     if not amount.is_finite() or amount <= 0:
         raise ValueError("Amount must be greater than zero.")
 
-    # Convert KES to cents
     cents = amount * 100
 
     if cents != cents.to_integral_value():
@@ -230,19 +276,17 @@ def update_expense(expense_id, amount, category, description="", expense_date=No
 
     amount_cents = int(cents)
 
-    # Validate category
     category = category.strip()
 
     if not category:
         raise ValueError("Category cannot be empty.")
 
-    # Validate date
     if expense_date is None:
         expense_date = date.today().isoformat()
     else:
         try:
             expense_date = date.fromisoformat(expense_date).isoformat()
-        except ValueError:
+        except (ValueError, TypeError):
             raise ValueError("Date must use YYYY-MM-DD format.")
 
     connection = get_connection()
@@ -277,7 +321,11 @@ def update_expense(expense_id, amount, category, description="", expense_date=No
 def get_expense(expense_id):
     """Retrieve one expense by its ID."""
 
-    if isinstance(expense_id, bool) or not isinstance(expense_id, int) or expense_id <= 0:
+    if (
+        isinstance(expense_id, bool)
+        or not isinstance(expense_id, int)
+        or expense_id <= 0
+    ):
         raise ValueError("Invalid expense ID.")
 
     connection = get_connection()

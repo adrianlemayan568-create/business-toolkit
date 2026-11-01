@@ -1,3 +1,5 @@
+
+import re
 import unittest
 import tempfile
 
@@ -7,15 +9,44 @@ from unittest.mock import patch
 from app import app
 
 
-class TestExpenseRoutes(unittest.TestCase):
+class CSRFTestMixin:
 
     def setUp(self):
         app.config["TESTING"] = True
+        app.config["WTF_CSRF_ENABLED"] = True
         self.client = app.test_client()
+
+    def get_csrf_token(self, response):
+        match = re.search(
+            rb'name="csrf_token"\s+value="([^"]+)"',
+            response.data
+        )
+
+        self.assertIsNotNone(
+            match,
+            "CSRF token was not found in the rendered form."
+        )
+
+        return match.group(1).decode("utf-8")
+
+    def get_dashboard_token(self):
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+
+        return self.get_csrf_token(response)
+
+
+class TestExpenseRoutes(CSRFTestMixin, unittest.TestCase):
 
     @patch("app.delete_expense", return_value=True)
     def test_delete_existing_expense_route(self, mock_delete):
-        response = self.client.post("/delete-expense/1")
+        token = self.get_dashboard_token()
+
+        response = self.client.post(
+            "/delete-expense/1",
+            data={"csrf_token": token}
+        )
 
         self.assertEqual(response.status_code, 302)
         mock_delete.assert_called_once_with(1)
@@ -30,7 +61,12 @@ class TestExpenseRoutes(unittest.TestCase):
 
     @patch("app.delete_expense", return_value=False)
     def test_delete_nonexistent_expense_route(self, mock_delete):
-        response = self.client.post("/delete-expense/999")
+        token = self.get_dashboard_token()
+
+        response = self.client.post(
+            "/delete-expense/999",
+            data={"csrf_token": token}
+        )
 
         self.assertEqual(response.status_code, 302)
         mock_delete.assert_called_once_with(999)
@@ -52,18 +88,81 @@ class TestExpenseRoutes(unittest.TestCase):
 
     @patch("app.delete_expense")
     def test_non_integer_expense_id_is_rejected(self, mock_delete):
-        response = self.client.post("/delete-expense/abc")
+        token = self.get_dashboard_token()
+
+        response = self.client.post(
+            "/delete-expense/abc",
+            data={"csrf_token": token}
+        )
 
         self.assertEqual(response.status_code, 404)
         mock_delete.assert_not_called()
 
+    @patch("app.delete_expense")
+    def test_delete_without_csrf_token_is_rejected(self, mock_delete):
+        response = self.client.post("/delete-expense/1")
+
+        self.assertEqual(response.status_code, 400)
+        mock_delete.assert_not_called()
+
+    @patch("app.delete_expense")
+    def test_delete_with_invalid_csrf_token_is_rejected(
+        self, mock_delete
+    ):
+        response = self.client.post(
+            "/delete-expense/1",
+            data={"csrf_token": "invalid-token"}
+        )
+
+        self.assertEqual(response.status_code, 400)
+        mock_delete.assert_not_called()
 
 
-class TestEditExpenseRoute(unittest.TestCase):
+class TestAddExpenseRoute(CSRFTestMixin, unittest.TestCase):
 
-    def setUp(self):
-        app.config["TESTING"] = True
-        self.client = app.test_client()
+    @patch("app.add_expense")
+    def test_successful_expense_addition(self, mock_add):
+        token = self.get_dashboard_token()
+
+        response = self.client.post(
+            "/add-expense",
+            data={
+                "csrf_token": token,
+                "amount": "250.00",
+                "category": "Food",
+                "description": "Lunch",
+                "expense_date": "2026-11-01",
+            }
+        )
+
+        self.assertEqual(response.status_code, 302)
+
+        mock_add.assert_called_once_with(
+            amount="250.00",
+            category="Food",
+            description="Lunch",
+            expense_date="2026-11-01",
+        )
+
+    @patch("app.add_expense")
+    def test_add_expense_without_csrf_token_is_rejected(
+        self, mock_add
+    ):
+        response = self.client.post(
+            "/add-expense",
+            data={
+                "amount": "250.00",
+                "category": "Food",
+                "description": "Lunch",
+                "expense_date": "2026-11-01",
+            }
+        )
+
+        self.assertEqual(response.status_code, 400)
+        mock_add.assert_not_called()
+
+
+class TestEditExpenseRoute(CSRFTestMixin, unittest.TestCase):
 
     def sample_expense(self):
         return {
@@ -83,6 +182,8 @@ class TestEditExpenseRoute(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Edit Expense", response.data)
         self.assertIn(b"Food", response.data)
+        self.assertIn(b'name="csrf_token"', response.data)
+
         mock_get_expense.assert_called_once_with(1)
 
     @patch("app.get_expense", return_value=None)
@@ -99,12 +200,18 @@ class TestEditExpenseRoute(unittest.TestCase):
 
     @patch("app.update_expense", return_value=True)
     @patch("app.get_expense")
-    def test_successful_expense_update(self, mock_get_expense, mock_update):
+    def test_successful_expense_update(
+        self, mock_get_expense, mock_update
+    ):
         mock_get_expense.return_value = self.sample_expense()
+
+        form_response = self.client.get("/edit-expense/1")
+        token = self.get_csrf_token(form_response)
 
         response = self.client.post(
             "/edit-expense/1",
             data={
+                "csrf_token": token,
                 "amount": "300.00",
                 "category": "Transport",
                 "description": "Bus fare",
@@ -113,6 +220,7 @@ class TestEditExpenseRoute(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 302)
+
         mock_update.assert_called_once_with(
             expense_id=1,
             amount="300.00",
@@ -124,18 +232,28 @@ class TestEditExpenseRoute(unittest.TestCase):
         with self.client.session_transaction() as session:
             flashes = session.get("_flashes", [])
 
-        self.assertIn(("success", "Expense updated successfully!"), flashes)
+        self.assertIn(
+            ("success", "Expense updated successfully!"),
+            flashes
+        )
 
-    @patch("app.update_expense", side_effect=ValueError("Amount must be positive."))
+    @patch(
+        "app.update_expense",
+        side_effect=ValueError("Amount must be positive.")
+    )
     @patch("app.get_expense")
     def test_invalid_update_preserves_form_values(
         self, mock_get_expense, mock_update
     ):
         mock_get_expense.return_value = self.sample_expense()
 
+        form_response = self.client.get("/edit-expense/1")
+        token = self.get_csrf_token(form_response)
+
         response = self.client.post(
             "/edit-expense/1",
             data={
+                "csrf_token": token,
                 "amount": "-50",
                 "category": "Transport",
                 "description": "Bus fare",
@@ -147,13 +265,26 @@ class TestEditExpenseRoute(unittest.TestCase):
         self.assertIn(b"-50", response.data)
         self.assertIn(b"Transport", response.data)
         self.assertIn(b"Bus fare", response.data)
+
         mock_update.assert_called_once()
 
-class TestMonthlyReportRoute(unittest.TestCase):
+    @patch("app.get_expense")
+    def test_edit_without_csrf_token_is_rejected(self, mock_get_expense):
+        response = self.client.post(
+            "/edit-expense/1",
+            data={
+                "amount": "300.00",
+                "category": "Transport",
+                "description": "Bus fare",
+                "expense_date": "2026-11-02",
+            }
+        )
 
-    def setUp(self):
-        app.config["TESTING"] = True
-        self.client = app.test_client()
+        self.assertEqual(response.status_code, 400)
+        mock_get_expense.assert_not_called()
+
+
+class TestMonthlyReportRoute(CSRFTestMixin, unittest.TestCase):
 
     def prepare_dashboard_mocks(self):
         return (
@@ -221,11 +352,7 @@ class TestMonthlyReportRoute(unittest.TestCase):
         )
 
 
-class TestExportRoute(unittest.TestCase):
-
-    def setUp(self):
-        app.config["TESTING"] = True
-        self.client = app.test_client()
+class TestExportRoute(CSRFTestMixin, unittest.TestCase):
 
     def test_csv_download_returns_correct_file(self):
         csv_content = (
