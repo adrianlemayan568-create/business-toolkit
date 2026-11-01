@@ -6,6 +6,7 @@ from modules.expenses import (
     get_total_expenses,
     get_monthly_total,
     get_monthly_category_totals,
+    compare_monthly_expenses,
     delete_expense,
     export_expenses
 )
@@ -19,8 +20,8 @@ def display_menu():
     print("4. Delete an expense")
     print("5. Export expenses to CSV")
     print("6. View monthly expense report")
-    print("7. Exit")
-
+    print("7. compare two months")
+    print("8. Exit")
 
 def handle_add_expense():
     try:
@@ -105,6 +106,62 @@ def handle_monthly_report():
         print("\nPlease enter valid numeric values.")
 
 
+def handle_monthly_comparison():
+    try:
+        print("\n===== MONTH-TO-MONTH COMPARISON =====")
+
+        print("\nFIRST MONTH")
+        year1 = int(input("Enter year: "))
+        month1 = int(input("Enter month (1-12): "))
+
+        print("\nSECOND MONTH")
+        year2 = int(input("Enter year: "))
+        month2 = int(input("Enter month (1-12): "))
+
+        if not 1 <= month1 <= 12 or not 1 <= month2 <= 12:
+            print("\nInvalid month. Enter a number between 1 and 12.")
+            return
+
+        if not 1 <= year1 <= 9999 or not 1 <= year2 <= 9999:
+            print("\nInvalid year.")
+            return
+
+        result = compare_monthly_expenses(
+            year1, month1, year2, month2
+        )
+
+        first_total = result["first_month_total"] / 100
+        second_total = result["second_month_total"] / 100
+        difference = result["difference"] / 100
+
+        print("\n========================================")
+        print("          EXPENSE COMPARISON")
+        print("========================================")
+
+        print(f"First month:  {year1}-{month1:02d} | KSh {first_total:,.2f}")
+        print(f"Second month: {year2}-{month2:02d} | KSh {second_total:,.2f}")
+
+        print("----------------------------------------")
+
+        if difference < 0:
+            print(f"Spending decreased by KSh {abs(difference):,.2f}")
+        elif difference > 0:
+            print(f"Spending increased by KSh {difference:,.2f}")
+        else:
+            print("Spending remained unchanged.")
+
+        percentage = result["percentage_change"]
+
+        if percentage is None:
+            print("Percentage change: Not available (first month has zero expenses).")
+        else:
+            print(f"Percentage change: {percentage:+.2f}%")
+
+        print("========================================")
+
+    except ValueError:
+        print("\nPlease enter valid numeric values.")
+
 def handle_delete_expense():
     expenses = view_expenses()
 
@@ -151,7 +208,7 @@ def main():
     while True:
         display_menu()
 
-        choice = input("\nChoose an option (1-7): ").strip()
+        choice = input("\nChoose an option (1-9): ").strip()
 
         if choice == "1":
             handle_add_expense()
@@ -172,11 +229,14 @@ def main():
             handle_monthly_report()
 
         elif choice == "7":
+            handle_monthly_comparison()
+
+        elif choice == "8":
             print("\nGoodbye!")
             break
 
         else:
-            print("\nInvalid choice. Enter a number from 1 to 7.")
+            print("\nInvalid choice. Enter a number from 1 to 8.")
 
 
 if __name__ == "__main__":

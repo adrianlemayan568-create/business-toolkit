@@ -164,5 +164,50 @@ class TestExpenses(unittest.TestCase):
         self.assertEqual(results[1]["category"], "Transport")
         self.assertEqual(results[1]["total_cents"], 20000)
 
+    def test_monthly_expenses_decrease(self):
+        expenses.add_expense(
+            3500, "Transport", "October expenses", "2026-10-15"
+        )
+        expenses.add_expense(
+            2800, "Transport", "November expenses", "2026-11-15"
+        )
+
+        result = expenses.compare_monthly_expenses(
+            2026, 10, 2026, 11
+        )
+
+        self.assertEqual(result["first_month_total"], 350000)
+        self.assertEqual(result["second_month_total"], 280000)
+        self.assertEqual(result["difference"], -70000)
+        self.assertAlmostEqual(result["percentage_change"], -20.0)
+
+    def test_monthly_expenses_increase(self):
+        expenses.add_expense(
+            2000, "Food", "October expenses", "2026-10-15"
+        )
+        expenses.add_expense(
+            3000, "Food", "November expenses", "2026-11-15"
+        )
+
+        result = expenses.compare_monthly_expenses(
+            2026, 10, 2026, 11
+        )
+
+        self.assertEqual(result["difference"], 100000)
+        self.assertAlmostEqual(result["percentage_change"], 50.0)
+
+    def test_monthly_comparison_with_zero_first_month(self):
+        expenses.add_expense(
+            1000, "Food", "November expenses", "2026-11-15"
+        )
+
+        result = expenses.compare_monthly_expenses(
+            2026, 10, 2026, 11
+        )
+
+        self.assertEqual(result["first_month_total"], 0)
+        self.assertEqual(result["second_month_total"], 100000)
+        self.assertIsNone(result["percentage_change"])
+
 if __name__ == "__main__":
     unittest.main()

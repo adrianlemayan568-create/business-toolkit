@@ -180,5 +180,27 @@ def export_expenses():
                 expense["description"],
                 expense["expense_date"]
             ])
+        return file_path
 
-    return file_path
+def compare_monthly_expenses(year1, month1, year2, month2):
+    """Compare total expenses between two different months."""
+
+    first_month_total = get_monthly_total(year1, month1)
+    second_month_total = get_monthly_total(year2, month2)
+
+    difference = second_month_total - first_month_total
+
+    if first_month_total == 0:
+        percentage_change = None
+    else:
+        percentage_change = (
+            difference / first_month_total
+        ) * 100
+
+    return {
+        "first_month_total": first_month_total,
+        "second_month_total": second_month_total,
+        "difference": difference,
+        "percentage_change": percentage_change
+    }
+
