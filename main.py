@@ -1,8 +1,11 @@
 from database.db import initialize_database
+
 from modules.expenses import (
     add_expense,
     view_expenses,
     get_total_expenses,
+    get_monthly_total,
+    get_monthly_category_totals,
     delete_expense,
     export_expenses
 )
@@ -15,7 +18,8 @@ def display_menu():
     print("3. View total expenses")
     print("4. Delete an expense")
     print("5. Export expenses to CSV")
-    print("6. Exit")
+    print("6. View monthly expense report")
+    print("7. Exit")
 
 
 def handle_add_expense():
@@ -55,6 +59,50 @@ def handle_view_expenses():
 def handle_total_expenses():
     total = get_total_expenses() / 100
     print(f"\nTotal expenses: KSh {total:.2f}")
+
+
+def handle_monthly_report():
+    try:
+        year = int(input("Enter year (e.g. 2026): "))
+        month = int(input("Enter month (1-12): "))
+
+        if not 1 <= month <= 12:
+            print("\nInvalid month. Enter a number between 1 and 12.")
+            return
+
+        if not 1 <= year <= 9999:
+            print("\nInvalid year.")
+            return
+
+        total_cents = get_monthly_total(year, month)
+        category_totals = get_monthly_category_totals(year, month)
+
+        print("\n========================================")
+        print("          MONTHLY EXPENSE REPORT")
+        print("========================================")
+        print(f"Month: {year}-{month:02d}")
+        print(f"\nTOTAL EXPENSES: KSh {total_cents / 100:,.2f}")
+
+        print("\nCATEGORY BREAKDOWN")
+        print("----------------------------------------")
+
+        if not category_totals:
+            print("No expenses recorded for this month.")
+        else:
+            for item in category_totals:
+                amount = item["total_cents"] / 100
+
+                print(
+                    f'{item["category"]:<20} '
+                    f'KSh {amount:,.2f}'
+                )
+
+        print("----------------------------------------")
+        print(f'{"TOTAL":<20} KSh {total_cents / 100:,.2f}')
+        print("========================================")
+
+    except ValueError:
+        print("\nPlease enter valid numeric values.")
 
 
 def handle_delete_expense():
@@ -103,7 +151,7 @@ def main():
     while True:
         display_menu()
 
-        choice = input("\nChoose an option (1-6): ").strip()
+        choice = input("\nChoose an option (1-7): ").strip()
 
         if choice == "1":
             handle_add_expense()
@@ -121,11 +169,14 @@ def main():
             handle_export_expenses()
 
         elif choice == "6":
+            handle_monthly_report()
+
+        elif choice == "7":
             print("\nGoodbye!")
             break
 
         else:
-            print("\nInvalid choice. Enter a number from 1 to 6.")
+            print("\nInvalid choice. Enter a number from 1 to 7.")
 
 
 if __name__ == "__main__":

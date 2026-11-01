@@ -137,5 +137,32 @@ class TestExpenses(unittest.TestCase):
         self.assertEqual(rows[2][2], "Food")
         self.assertEqual(rows[2][3], "Lunch")
 
+    def test_monthly_category_totals(self):
+        expenses.add_expense(
+            100, "Food", "", "2026-11-01"
+        )
+
+        expenses.add_expense(
+            200, "Transport", "", "2026-11-02"
+        )
+
+        expenses.add_expense(
+            150, "Food", "", "2026-11-03"
+        )
+
+        expenses.add_expense(
+            500, "Rent", "", "2026-10-15"
+        )
+
+        results = expenses.get_monthly_category_totals(2026, 11)
+
+        self.assertEqual(len(results), 2)
+
+        self.assertEqual(results[0]["category"], "Food")
+        self.assertEqual(results[0]["total_cents"], 25000)
+
+        self.assertEqual(results[1]["category"], "Transport")
+        self.assertEqual(results[1]["total_cents"], 20000)
+
 if __name__ == "__main__":
     unittest.main()

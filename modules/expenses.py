@@ -112,6 +112,29 @@ def get_monthly_total(year, month):
     finally:
         connection.close()
 
+def get_monthly_category_totals(year, month):
+    """Calculate expense totals grouped by category for a specific month."""
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.execute(
+            """
+            SELECT category, SUM(amount_cents) AS total_cents
+            FROM expenses
+            WHERE strftime('%Y', expense_date) = ?
+            AND strftime('%m', expense_date) = ?
+            GROUP BY category
+            ORDER BY total_cents DESC
+            """,
+            (str(year), f"{month:02d}")
+        )
+
+        return cursor.fetchall()
+
+    finally:
+        connection.close()
+
 def delete_expense(expense_id):
     """Delete an expense using its ID."""
     connection = get_connection()
