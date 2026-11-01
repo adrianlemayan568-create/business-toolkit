@@ -22,8 +22,113 @@
     <main class="container">
 
         <section class="summary-card">
-            <h2>Total Expenses</h2>
+            <h2>All-Time Expenses</h2>
             <p class="total">KSh {{ "%.2f"|format(total) }}</p>
+        </section>
+
+        <section class="reports-card">
+            <h2>Monthly Reports</h2>
+
+            <form action="{{ url_for('index') }}" method="GET"
+                  class="month-form">
+
+                <label for="month">Select reporting month</label>
+
+                <input
+                    type="month"
+                    id="month"
+                    name="month"
+                    value="{{ selected_month }}"
+                    required
+                >
+
+                <button type="submit">View Report</button>
+            </form>
+
+            <div class="report-summary">
+                <h3>{{ selected_month_label }}</h3>
+
+                <div class="report-box">
+                    <p class="report-label">Monthly Expenses</p>
+                    <p class="report-value">
+                        KSh {{ "%.2f"|format(monthly_total) }}
+                    </p>
+                </div>
+            </div>
+
+            <div class="category-report">
+                <h3>Spending by Category</h3>
+
+                {% if category_totals %}
+
+                    {% for category in category_totals %}
+                        <div class="category-row">
+                            <span>{{ category["category"] }}</span>
+
+                            <strong>
+                                KSh {{ "%.2f"|format(category["total_cents"] / 100) }}
+                            </strong>
+                        </div>
+                    {% endfor %}
+
+                {% else %}
+
+                    <p class="empty-message">
+                        No expenses recorded for this month.
+                    </p>
+
+                {% endif %}
+            </div>
+
+            <div class="comparison-report">
+                <h3>Month-to-Month Comparison</h3>
+
+                <p class="comparison-period">
+                    {{ previous_month_label }} compared with
+                    {{ selected_month_label }}
+                </p>
+
+                <p>
+                    Previous month:
+                    <strong>
+                        KSh {{ "%.2f"|format(comparison["first_month_total"] / 100) }}
+                    </strong>
+                </p>
+
+                <p>
+                    Selected month:
+                    <strong>
+                        KSh {{ "%.2f"|format(comparison["second_month_total"] / 100) }}
+                    </strong>
+                </p>
+
+                <p>
+                    Difference:
+                    <strong>
+                        {% if comparison["difference"] > 0 %}
+                            +KSh {{ "%.2f"|format(comparison["difference"] / 100) }}
+                        {% elif comparison["difference"] < 0 %}
+                            -KSh {{ "%.2f"|format(comparison["difference"]|abs / 100) }}
+                        {% else %}
+                            KSh 0.00
+                        {% endif %}
+                    </strong>
+                </p>
+
+                <p class="comparison-result">
+                    {% if comparison["percentage_change"] is none %}
+                        Percentage change unavailable because the previous month had no expenses.
+                    {% elif comparison["percentage_change"] > 0 %}
+                        Expenses increased by
+                        {{ "%.2f"|format(comparison["percentage_change"]) }}%.
+                    {% elif comparison["percentage_change"] < 0 %}
+                        Expenses decreased by
+                        {{ "%.2f"|format(comparison["percentage_change"]|abs) }}%.
+                    {% else %}
+                        Expenses remained unchanged.
+                    {% endif %}
+                </p>
+            </div>
         </section>
 
         <section class="form-card">

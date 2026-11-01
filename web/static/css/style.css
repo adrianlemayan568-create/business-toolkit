@@ -216,3 +216,68 @@ footer {
 .delete-button:hover {
     background: #b91c1c;
 }
+
+/* Monthly reporting */
+
+.month-form {
+    margin-bottom: 25px;
+}
+
+.report-summary,
+.category-report,
+.comparison-report {
+    margin-top: 22px;
+}
+
+.report-box {
+    background: #f1f5f9;
+    padding: 18px;
+    border-radius: 8px;
+}
+
+.report-label {
+    color: #64748b;
+    font-size: 14px;
+}
+
+.report-value {
+    font-size: 27px;
+    font-weight: bold;
+    color: #1e3a8a;
+}
+
+.category-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid #e2e8f0;
+    overflow-wrap: anywhere;
+}
+
+.comparison-period {
+    color: #64748b;
+    font-size: 13px;
+    margin-bottom: 12px;
+}
+
+.comparison-report > p {
+    margin-bottom: 9px;
+}
+
+.comparison-result {
+    padding: 12px;
+    background: #f1f5f9;
+    border-radius: 7px;
+    font-weight: bold;
+}
+
+@media (max-width: 600px) {
+    .report-value {
+        font-size: 24px;
+    }
+
+    .category-row {
+        font-size: 14px;
+    }
+}
