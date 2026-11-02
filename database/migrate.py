@@ -3,6 +3,8 @@ import getpass
 import re
 import sqlite3
 import sys
+
+from datetime import datetime
 from pathlib import Path
 
 from werkzeug.security import generate_password_hash
@@ -29,7 +31,10 @@ def normalize_email(email):
 def get_account_details():
     email = normalize_email(input("First account email: "))
 
-    password = getpass.getpass("Create password (minimum 12 characters): ")
+    password = getpass.getpass(
+        "Create password (minimum 12 characters): "
+    )
+
     confirmation = getpass.getpass("Confirm password: ")
 
     if password != confirmation:
@@ -44,7 +49,166 @@ def get_account_details():
     return email, generate_password_hash(password)
 
 
+def validate_legacy_database(connection):
+    version = connection.execute(
+        "PRAGMA user_version"
+    ).fetchone()[0]
+
+    if version != 0:
+        raise RuntimeError(
+            f"Expected schema version 0, found {version}."
+        )
+
+    tables = {
+        row[0]
+        for row in connection.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table'
+            """
+        )
+    }
+
+    if "expenses" not in tables:
+        raise RuntimeError("The expenses table does not exist.")
+
+    if "users" in tables:
+        raise RuntimeError(
+            "A users table already exists. Migration stopped."
+        )
+
+    columns = {
+        row[1]
+        for row in connection.execute(
+            "PRAGMA table_info(expenses)"
+        )
+    }
+
+    required_columns = {
+        "id",
+        "amount_cents",
+        "category",
+        "description",
+        "expense_date",
+        "created_at"
+    }
+
+    if columns != required_columns:
+        raise RuntimeError(
+            "The existing expenses schema is not "
+            "the expected legacy schema."
+        )
+
+
+def create_verified_backup(database_path):
+    database_path = Path(database_path).resolve()
+
+    timestamp = datetime.now().strftime(
+        "%Y%m%d_%H%M%S_%f"
+    )
+
+    backup_path = database_path.with_name(
+        f"{database_path.stem}.pre_migration_{timestamp}"
+        f"{database_path.suffix}"
+    )
+
+    source = None
+    destination = None
+
+    try:
+        # Exclusive creation prevents overwriting an existing backup.
+        with backup_path.open("xb"):
+            pass
+
+        source = sqlite3.connect(
+            database_path,
+            timeout=10
+        )
+
+        destination = sqlite3.connect(
+            backup_path,
+            timeout=10
+        )
+
+        source.backup(destination)
+
+        destination.commit()
+        destination.close()
+        destination = None
+
+        source.close()
+        source = None
+
+        # Verify the backup independently.
+        verification = sqlite3.connect(
+            backup_path,
+            timeout=10
+        )
+
+        try:
+            integrity = verification.execute(
+                "PRAGMA integrity_check"
+            ).fetchone()[0]
+
+            if integrity != "ok":
+                raise RuntimeError(
+                    f"Backup integrity check failed: {integrity}"
+                )
+
+            foreign_key_errors = verification.execute(
+                "PRAGMA foreign_key_check"
+            ).fetchall()
+
+            if foreign_key_errors:
+                raise RuntimeError(
+                    "Backup contains foreign-key violations."
+                )
+
+        finally:
+            verification.close()
+
+        return backup_path
+
+    except Exception:
+        if destination is not None:
+            destination.close()
+
+        if source is not None:
+            source.close()
+
+        # Remove only an incomplete backup.
+        if backup_path.exists():
+            backup_path.unlink()
+
+        raise
+
+
 def migrate(database_path, email, password_hash):
+    database_path = Path(database_path).resolve()
+
+    if not database_path.is_file():
+        raise RuntimeError(
+            f"Database file not found: {database_path}"
+        )
+
+    # Validate before creating a backup.
+    connection = sqlite3.connect(
+        database_path,
+        timeout=10
+    )
+
+    try:
+        connection.execute("PRAGMA foreign_keys = ON")
+        validate_legacy_database(connection)
+    finally:
+        connection.close()
+
+    # Migration cannot proceed without a verified backup.
+    backup_path = create_verified_backup(database_path)
+
+    print(f"Verified backup created: {backup_path}")
+
     connection = sqlite3.connect(
         database_path,
         timeout=10
@@ -53,54 +217,8 @@ def migrate(database_path, email, password_hash):
     try:
         connection.execute("PRAGMA foreign_keys = ON")
 
-        version = connection.execute(
-            "PRAGMA user_version"
-        ).fetchone()[0]
-
-        if version != 0:
-            raise RuntimeError(
-                f"Expected schema version 0, found {version}."
-            )
-
-        tables = {
-            row[0]
-            for row in connection.execute(
-                """
-                SELECT name
-                FROM sqlite_master
-                WHERE type = 'table'
-                """
-            )
-        }
-
-        if "expenses" not in tables:
-            raise RuntimeError("The expenses table does not exist.")
-
-        if "users" in tables:
-            raise RuntimeError(
-                "A users table already exists. Migration stopped."
-            )
-
-        columns = {
-            row[1]
-            for row in connection.execute(
-                "PRAGMA table_info(expenses)"
-            )
-        }
-
-        required_columns = {
-            "id",
-            "amount_cents",
-            "category",
-            "description",
-            "expense_date",
-            "created_at"
-        }
-
-        if columns != required_columns:
-            raise RuntimeError(
-                "The existing expenses schema is not the expected legacy schema."
-            )
+        # Recheck the schema after backup creation.
+        validate_legacy_database(connection)
 
         connection.execute("BEGIN IMMEDIATE")
 
@@ -191,6 +309,25 @@ def migrate(database_path, email, password_hash):
             f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}"
         )
 
+        # Check database integrity before committing.
+        integrity = connection.execute(
+            "PRAGMA integrity_check"
+        ).fetchone()[0]
+
+        if integrity != "ok":
+            raise RuntimeError(
+                f"Database integrity check failed: {integrity}"
+            )
+
+        foreign_key_errors = connection.execute(
+            "PRAGMA foreign_key_check"
+        ).fetchall()
+
+        if foreign_key_errors:
+            raise RuntimeError(
+                "Migration produced foreign-key violations."
+            )
+
         connection.commit()
 
         return user_id
@@ -238,7 +375,7 @@ def main():
         print(f"First account ID: {user_id}")
         print(f"Database schema version: {CURRENT_SCHEMA_VERSION}")
 
-    except (ValueError, RuntimeError, sqlite3.Error) as error:
+    except (ValueError, RuntimeError, sqlite3.Error, OSError) as error:
         print(f"\nMigration failed: {error}")
         return 1
 
