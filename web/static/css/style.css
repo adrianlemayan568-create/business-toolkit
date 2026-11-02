@@ -348,3 +348,28 @@ th {
         font-size: 14px;
     }
 }
+
+/* Login page */
+
+.login-container {
+    max-width: 450px;
+    margin: 50px auto;
+}
+
+.login-card {
+    padding: 30px;
+}
+
+.login-description {
+    color: #64748b;
+    font-size: 14px;
+    margin-bottom: 15px;
+}
+
+.login-card button {
+    width: 100%;
+}
+
+.login-card input {
+    margin-bottom: 8px;
+}

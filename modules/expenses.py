@@ -1,14 +1,34 @@
+
 import csv
+import io
 
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from pathlib import Path
 
 from database.db import get_connection
 
 
-def add_expense(amount, category, description="", expense_date=None):
-    """Save a new expense in the database."""
+def validate_user_id(user_id):
+    """Validate an account ID before database operations."""
+
+    if (
+        isinstance(user_id, bool)
+        or not isinstance(user_id, int)
+        or user_id <= 0
+    ):
+        raise ValueError("Invalid user ID.")
+
+
+def add_expense(
+    user_id,
+    amount,
+    category,
+    description="",
+    expense_date=None
+):
+    """Save a new expense belonging to a specific user."""
+
+    validate_user_id(user_id)
 
     try:
         amount = Decimal(str(amount))
@@ -43,11 +63,22 @@ def add_expense(amount, category, description="", expense_date=None):
     try:
         cursor = connection.execute(
             """
-            INSERT INTO expenses
-            (amount_cents, category, description, expense_date)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO expenses (
+                user_id,
+                amount_cents,
+                category,
+                description,
+                expense_date
+            )
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (amount_cents, category, description.strip(), expense_date)
+            (
+                user_id,
+                amount_cents,
+                category,
+                description.strip(),
+                expense_date
+            )
         )
 
         connection.commit()
@@ -58,8 +89,10 @@ def add_expense(amount, category, description="", expense_date=None):
         connection.close()
 
 
-def view_expenses():
-    """Retrieve all recorded expenses."""
+def view_expenses(user_id):
+    """Retrieve only the expenses belonging to one user."""
+
+    validate_user_id(user_id)
 
     connection = get_connection()
 
@@ -69,8 +102,10 @@ def view_expenses():
             SELECT id, amount_cents, category,
                    description, expense_date
             FROM expenses
+            WHERE user_id = ?
             ORDER BY expense_date DESC, id DESC
-            """
+            """,
+            (user_id,)
         )
 
         return cursor.fetchall()
@@ -79,24 +114,10 @@ def view_expenses():
         connection.close()
 
 
-def get_total_expenses():
-    """Calculate the total of all recorded expenses."""
+def get_total_expenses(user_id):
+    """Calculate the total expenses belonging to one user."""
 
-    connection = get_connection()
-
-    try:
-        cursor = connection.execute(
-            "SELECT COALESCE(SUM(amount_cents), 0) FROM expenses"
-        )
-
-        return cursor.fetchone()[0]
-
-    finally:
-        connection.close()
-
-
-def get_monthly_total(year, month):
-    """Calculate expenses for a specific month."""
+    validate_user_id(user_id)
 
     connection = get_connection()
 
@@ -105,10 +126,9 @@ def get_monthly_total(year, month):
             """
             SELECT COALESCE(SUM(amount_cents), 0)
             FROM expenses
-            WHERE strftime('%Y', expense_date) = ?
-            AND strftime('%m', expense_date) = ?
+            WHERE user_id = ?
             """,
-            (str(year), f"{month:02d}")
+            (user_id,)
         )
 
         return cursor.fetchone()[0]
@@ -117,8 +137,35 @@ def get_monthly_total(year, month):
         connection.close()
 
 
-def get_monthly_category_totals(year, month):
-    """Calculate expense totals grouped by category for a specific month."""
+def get_monthly_total(user_id, year, month):
+    """Calculate one user's expenses for a specific month."""
+
+    validate_user_id(user_id)
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.execute(
+            """
+            SELECT COALESCE(SUM(amount_cents), 0)
+            FROM expenses
+            WHERE user_id = ?
+            AND strftime('%Y', expense_date) = ?
+            AND strftime('%m', expense_date) = ?
+            """,
+            (user_id, str(year), f"{month:02d}")
+        )
+
+        return cursor.fetchone()[0]
+
+    finally:
+        connection.close()
+
+
+def get_monthly_category_totals(user_id, year, month):
+    """Calculate one user's monthly totals grouped by category."""
+
+    validate_user_id(user_id)
 
     connection = get_connection()
 
@@ -127,12 +174,13 @@ def get_monthly_category_totals(year, month):
             """
             SELECT category, SUM(amount_cents) AS total_cents
             FROM expenses
-            WHERE strftime('%Y', expense_date) = ?
+            WHERE user_id = ?
+            AND strftime('%Y', expense_date) = ?
             AND strftime('%m', expense_date) = ?
             GROUP BY category
             ORDER BY total_cents DESC
             """,
-            (str(year), f"{month:02d}")
+            (user_id, str(year), f"{month:02d}")
         )
 
         return cursor.fetchall()
@@ -141,15 +189,27 @@ def get_monthly_category_totals(year, month):
         connection.close()
 
 
-def delete_expense(expense_id):
-    """Delete an expense using its ID."""
+def delete_expense(user_id, expense_id):
+    """Delete an expense only if it belongs to the specified user."""
+
+    validate_user_id(user_id)
+
+    if (
+        isinstance(expense_id, bool)
+        or not isinstance(expense_id, int)
+        or expense_id <= 0
+    ):
+        raise ValueError("Invalid expense ID.")
 
     connection = get_connection()
 
     try:
         cursor = connection.execute(
-            "DELETE FROM expenses WHERE id = ?",
-            (expense_id,)
+            """
+            DELETE FROM expenses
+            WHERE id = ? AND user_id = ?
+            """,
+            (expense_id, user_id)
         )
 
         connection.commit()
@@ -163,8 +223,6 @@ def delete_expense(expense_id):
 def safe_csv_text(value):
     """
     Reduce CSV formula injection risks in spreadsheet applications.
-
-    Prefix potentially dangerous text cells with an apostrophe.
     """
 
     if not isinstance(value, str):
@@ -183,50 +241,53 @@ def safe_csv_text(value):
     return value
 
 
-def export_expenses():
-    """Export expenses to a CSV file with formula-injection mitigation."""
+def export_expenses(user_id):
+    """Return a CSV containing only one user's expenses."""
 
-    expenses = view_expenses()
+    expenses = view_expenses(user_id)
 
-    export_dir = Path(__file__).resolve().parent.parent / "exports"
-    export_dir.mkdir(exist_ok=True)
+    output = io.StringIO(newline="")
 
-    file_path = export_dir / "expenses.csv"
+    writer = csv.writer(output)
 
-    with open(
-        file_path,
-        "w",
-        newline="",
-        encoding="utf-8"
-    ) as file:
+    writer.writerow([
+        "ID",
+        "Amount (KSh)",
+        "Category",
+        "Description",
+        "Date"
+    ])
 
-        writer = csv.writer(file)
-
+    for expense in expenses:
         writer.writerow([
-            "ID",
-            "Amount (KSh)",
-            "Category",
-            "Description",
-            "Date"
+            expense["id"],
+            f'{expense["amount_cents"] / 100:.2f}',
+            safe_csv_text(expense["category"]),
+            safe_csv_text(expense["description"]),
+            expense["expense_date"]
         ])
 
-        for expense in expenses:
-            writer.writerow([
-                expense["id"],
-                f'{expense["amount_cents"] / 100:.2f}',
-                safe_csv_text(expense["category"]),
-                safe_csv_text(expense["description"]),
-                expense["expense_date"]
-            ])
-
-    return file_path
+    return output.getvalue()
 
 
-def compare_monthly_expenses(year1, month1, year2, month2):
-    """Compare total expenses between two different months."""
+def compare_monthly_expenses(
+    user_id,
+    year1,
+    month1,
+    year2,
+    month2
+):
+    """Compare two months for one user's expenses."""
 
-    first_month_total = get_monthly_total(year1, month1)
-    second_month_total = get_monthly_total(year2, month2)
+    validate_user_id(user_id)
+
+    first_month_total = get_monthly_total(
+        user_id, year1, month1
+    )
+
+    second_month_total = get_monthly_total(
+        user_id, year2, month2
+    )
 
     difference = second_month_total - first_month_total
 
@@ -246,13 +307,16 @@ def compare_monthly_expenses(year1, month1, year2, month2):
 
 
 def update_expense(
+    user_id,
     expense_id,
     amount,
     category,
     description="",
     expense_date=None
 ):
-    """Update an existing expense using its ID."""
+    """Update an expense only if it belongs to the specified user."""
+
+    validate_user_id(user_id)
 
     if (
         isinstance(expense_id, bool)
@@ -299,14 +363,15 @@ def update_expense(
                 category = ?,
                 description = ?,
                 expense_date = ?
-            WHERE id = ?
+            WHERE id = ? AND user_id = ?
             """,
             (
                 amount_cents,
                 category,
                 description.strip(),
                 expense_date,
-                expense_id
+                expense_id,
+                user_id
             )
         )
 
@@ -318,8 +383,10 @@ def update_expense(
         connection.close()
 
 
-def get_expense(expense_id):
-    """Retrieve one expense by its ID."""
+def get_expense(user_id, expense_id):
+    """Retrieve one expense only if it belongs to the specified user."""
+
+    validate_user_id(user_id)
 
     if (
         isinstance(expense_id, bool)
@@ -336,9 +403,9 @@ def get_expense(expense_id):
             SELECT id, amount_cents, category,
                    description, expense_date
             FROM expenses
-            WHERE id = ?
+            WHERE id = ? AND user_id = ?
             """,
-            (expense_id,)
+            (expense_id, user_id)
         )
 
         return cursor.fetchone()

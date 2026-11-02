@@ -2,20 +2,28 @@
 import os
 import secrets
 from datetime import date, timedelta
+from functools import wraps
 
 from flask import (
     Flask,
+    Response,
     render_template,
     request,
     redirect,
     url_for,
     flash,
-    send_file
+    session,
+    g
 )
 
 from flask_wtf.csrf import CSRFProtect
 
-from database.db import initialize_database
+from database.db import verify_database_schema
+
+from modules.users import (
+    authenticate_user,
+    get_user_by_id
+)
 
 from modules.expenses import (
     add_expense,
@@ -31,16 +39,16 @@ from modules.expenses import (
 )
 
 
+# --------------------------------------------------
+# APPLICATION CONFIGURATION
+# --------------------------------------------------
+
 app = Flask(
     __name__,
     template_folder="web/templates",
     static_folder="web/static"
 )
 
-
-# --------------------------------------------------
-# APPLICATION ENVIRONMENT
-# --------------------------------------------------
 
 APP_ENV = os.environ.get(
     "APP_ENV",
@@ -54,37 +62,34 @@ if APP_ENV not in {"development", "production"}:
 
 
 # --------------------------------------------------
-# SECRET KEY CONFIGURATION
+# SECRET KEY
 # --------------------------------------------------
 
 SECRET_KEY = os.environ.get("SECRET_KEY")
 
-# Production must always use a persistent secret key.
 if APP_ENV == "production" and not SECRET_KEY:
     raise RuntimeError(
         "SECRET_KEY must be configured in production."
     )
 
-# A temporary random key is acceptable for local development.
 app.config["SECRET_KEY"] = (
     SECRET_KEY or secrets.token_hex(32)
 )
 
 
 # --------------------------------------------------
-# SESSION COOKIE SECURITY
+# SESSION SECURITY
 # --------------------------------------------------
 
-# JavaScript cannot access the session cookie.
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 
-# Reduces cross-site cookie sending.
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
-# Production cookies must only travel over HTTPS.
 app.config["SESSION_COOKIE_SECURE"] = (
     APP_ENV == "production"
 )
+
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=12)
 
 
 # --------------------------------------------------
@@ -95,10 +100,134 @@ csrf = CSRFProtect(app)
 
 
 # --------------------------------------------------
-# DATABASE INITIALIZATION
+# DATABASE VERIFICATION
 # --------------------------------------------------
 
-initialize_database()
+@app.before_request
+def verify_database_before_request():
+    """
+    Verify the database before the application serves requests.
+
+    Verification is cached after the first successful check.
+    """
+
+    if not app.extensions.get("database_verified", False):
+        verify_database_schema()
+
+        app.extensions["database_verified"] = True
+
+
+# --------------------------------------------------
+# LOAD CURRENT USER
+# --------------------------------------------------
+
+@app.before_request
+def load_current_user():
+    """
+    Load the authenticated account from the session.
+
+    Invalid or deleted accounts lose their session.
+    """
+
+    user_id = session.get("user_id")
+
+    if user_id is None:
+        g.current_user = None
+        return
+
+    user = get_user_by_id(user_id)
+
+    if user is None:
+        session.clear()
+        g.current_user = None
+        return
+
+    g.current_user = user
+
+
+# --------------------------------------------------
+# AUTHENTICATION DECORATOR
+# --------------------------------------------------
+
+def login_required(view):
+    """
+    Require an authenticated account before accessing a route.
+    """
+
+    @wraps(view)
+    def wrapped_view(*args, **kwargs):
+
+        if g.current_user is None:
+            flash(
+                "Please log in to continue.",
+                "error"
+            )
+
+            return redirect(url_for("login"))
+
+        return view(*args, **kwargs)
+
+    return wrapped_view
+
+
+# --------------------------------------------------
+# LOGIN
+# --------------------------------------------------
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+
+    # Already authenticated users go to the dashboard.
+    if g.current_user is not None:
+        return redirect(url_for("index"))
+
+    if request.method == "POST":
+
+        email = request.form.get("email", "")
+        password = request.form.get("password", "")
+
+        user = authenticate_user(email, password)
+
+        if user is None:
+            flash(
+                "Invalid email address or password.",
+                "error"
+            )
+
+            return render_template("login.html"), 401
+
+        # Prevent session fixation.
+        session.clear()
+
+        session["user_id"] = user["id"]
+        session.permanent = True
+
+        flash(
+            "Welcome back!",
+            "success"
+        )
+
+        return redirect(url_for("index"))
+
+    return render_template("login.html")
+
+
+# --------------------------------------------------
+# LOGOUT
+# --------------------------------------------------
+
+@app.route("/logout", methods=["POST"])
+@login_required
+def logout():
+
+    session.clear()
+
+    flash(
+        "You have been logged out.",
+        "success"
+    )
+
+    return redirect(url_for("login"))
 
 
 # --------------------------------------------------
@@ -106,7 +235,11 @@ initialize_database()
 # --------------------------------------------------
 
 @app.route("/")
+@login_required
 def index():
+
+    user_id = g.current_user["id"]
+
     today = date.today()
 
     selected_month = request.args.get(
@@ -118,8 +251,11 @@ def index():
         selected_date = date.fromisoformat(
             selected_month + "-01"
         )
+
     except ValueError:
+
         selected_date = today.replace(day=1)
+
         selected_month = selected_date.strftime("%Y-%m")
 
         flash(
@@ -134,22 +270,29 @@ def index():
         selected_date.replace(day=1) - timedelta(days=1)
     )
 
-    monthly_total = get_monthly_total(year, month)
+    monthly_total = get_monthly_total(
+        user_id,
+        year,
+        month
+    )
 
     category_totals = get_monthly_category_totals(
+        user_id,
         year,
         month
     )
 
     comparison = compare_monthly_expenses(
+        user_id,
         previous_month_date.year,
         previous_month_date.month,
         year,
         month
     )
 
-    expenses = view_expenses()
-    total_cents = get_total_expenses()
+    expenses = view_expenses(user_id)
+
+    total_cents = get_total_expenses(user_id)
 
     return render_template(
         "index.html",
@@ -174,23 +317,33 @@ def index():
 # --------------------------------------------------
 
 @app.route("/add-expense", methods=["POST"])
+@login_required
 def add_new_expense():
+
+    user_id = g.current_user["id"]
+
     amount = request.form.get("amount", "")
     category = request.form.get("category", "")
     description = request.form.get("description", "")
     expense_date = request.form.get("expense_date", "")
 
     try:
+
         add_expense(
+            user_id=user_id,
             amount=amount,
             category=category,
             description=description,
             expense_date=expense_date
         )
 
-        flash("Expense added successfully!", "success")
+        flash(
+            "Expense added successfully!",
+            "success"
+        )
 
     except (ValueError, TypeError) as error:
+
         flash(str(error), "error")
 
     return redirect(url_for("index"))
@@ -204,24 +357,39 @@ def add_new_expense():
     "/edit-expense/<int:expense_id>",
     methods=["GET", "POST"]
 )
+@login_required
 def edit_expense_route(expense_id):
 
-    expense = get_expense(expense_id)
+    user_id = g.current_user["id"]
+
+    # Ownership is checked by the database query.
+    expense = get_expense(
+        user_id,
+        expense_id
+    )
 
     if expense is None:
-        flash("Expense not found.", "error")
+
+        flash(
+            "Expense not found.",
+            "error"
+        )
+
         return redirect(url_for("index"))
 
     form_values = None
 
     if request.method == "POST":
+
         amount = request.form.get("amount", "")
         category = request.form.get("category", "")
         description = request.form.get("description", "")
         expense_date = request.form.get("expense_date", "")
 
         try:
+
             updated = update_expense(
+                user_id=user_id,
                 expense_id=expense_id,
                 amount=amount,
                 category=category,
@@ -230,11 +398,14 @@ def edit_expense_route(expense_id):
             )
 
             if updated:
+
                 flash(
                     "Expense updated successfully!",
                     "success"
                 )
+
             else:
+
                 flash(
                     "Expense not found. Nothing was updated.",
                     "error"
@@ -243,9 +414,9 @@ def edit_expense_route(expense_id):
             return redirect(url_for("index"))
 
         except (ValueError, TypeError) as error:
+
             flash(str(error), "error")
 
-            # Preserve submitted values if validation fails.
             form_values = {
                 "amount": amount,
                 "category": category,
@@ -268,12 +439,25 @@ def edit_expense_route(expense_id):
     "/delete-expense/<int:expense_id>",
     methods=["POST"]
 )
+@login_required
 def delete_expense_route(expense_id):
-    deleted = delete_expense(expense_id)
+
+    user_id = g.current_user["id"]
+
+    deleted = delete_expense(
+        user_id,
+        expense_id
+    )
 
     if deleted:
-        flash("Expense deleted successfully.", "success")
+
+        flash(
+            "Expense deleted successfully.",
+            "success"
+        )
+
     else:
+
         flash(
             "Expense not found. Nothing was deleted.",
             "error"
@@ -287,14 +471,20 @@ def delete_expense_route(expense_id):
 # --------------------------------------------------
 
 @app.route("/export-expenses")
+@login_required
 def export_expenses_route():
-    csv_file = export_expenses()
 
-    return send_file(
-        csv_file,
+    user_id = g.current_user["id"]
+
+    csv_content = export_expenses(user_id)
+
+    return Response(
+        csv_content,
         mimetype="text/csv",
-        as_attachment=True,
-        download_name="expenses.csv"
+        headers={
+            "Content-Disposition":
+                'attachment; filename="expenses.csv"'
+        }
     )
 
 
@@ -303,9 +493,12 @@ def export_expenses_route():
 # --------------------------------------------------
 
 if __name__ == "__main__":
+
     debug_mode = (
         APP_ENV != "production"
         and os.environ.get("FLASK_DEBUG") == "1"
     )
 
-    app.run(debug=debug_mode)
+    app.run(
+        debug=debug_mode
+    )

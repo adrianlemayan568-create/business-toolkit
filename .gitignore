@@ -1,12 +1,17 @@
+
 __pycache__/
 *.py[cod]
+
 .venv/
 .env
+.env.*
 
 *.db
 *.db.*
 *.sqlite3
+
 *.backup
+*.pre_auth
 *.pre_csv_fix
 
 exports/*
