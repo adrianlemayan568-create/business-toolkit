@@ -3,7 +3,11 @@ import re
 import unittest
 from unittest.mock import patch
 
-from app import app, limiter
+from app import (
+    app,
+    limiter,
+    validate_production_secret_key
+)
 
 
 TEST_USER_ID = 7
@@ -633,6 +637,48 @@ class TestExportExpenses(FlaskAppTestCase):
         )
 
         mock_export.assert_called_once_with(TEST_USER_ID)
+
+
+
+
+class TestProductionSecretKeyValidation(unittest.TestCase):
+
+    def test_missing_secret_is_rejected(self):
+        with self.assertRaises(RuntimeError):
+            validate_production_secret_key(None)
+
+    def test_empty_secret_is_rejected(self):
+        with self.assertRaises(RuntimeError):
+            validate_production_secret_key("")
+
+    def test_whitespace_only_secret_is_rejected(self):
+        with self.assertRaises(RuntimeError):
+            validate_production_secret_key(" " * 40)
+
+    def test_leading_whitespace_is_rejected(self):
+        with self.assertRaises(RuntimeError):
+            validate_production_secret_key(" " + "a" * 40)
+
+    def test_trailing_whitespace_is_rejected(self):
+        with self.assertRaises(RuntimeError):
+            validate_production_secret_key("a" * 40 + " ")
+
+    def test_short_secret_is_rejected(self):
+        with self.assertRaises(RuntimeError):
+            validate_production_secret_key("short-secret")
+
+    def test_placeholder_secret_is_rejected(self):
+        with self.assertRaises(RuntimeError):
+            validate_production_secret_key("password123")
+
+    def test_repeated_character_secret_is_rejected(self):
+        with self.assertRaises(RuntimeError):
+            validate_production_secret_key("x" * 40)
+
+    def test_valid_secret_is_accepted(self):
+        secret = "aB9$kL2!pQ7@vN4#xR8%tY3&zM6^wC1*"
+        result = validate_production_secret_key(secret)
+        self.assertEqual(result, secret)
 
 
 if __name__ == "__main__":

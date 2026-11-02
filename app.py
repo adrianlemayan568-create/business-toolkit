@@ -69,14 +69,64 @@ if APP_ENV not in {"development", "production"}:
 
 SECRET_KEY = os.environ.get("SECRET_KEY")
 
-if APP_ENV == "production" and not SECRET_KEY:
-    raise RuntimeError(
-        "SECRET_KEY must be configured in production."
-    )
 
-app.config["SECRET_KEY"] = (
-    SECRET_KEY or secrets.token_hex(32)
-)
+def validate_production_secret_key(secret_key):
+    """
+    Validate a production Flask secret key.
+
+    Production keys must be configured explicitly, contain at
+    least 32 characters, and must not be obvious placeholders.
+    """
+
+    if not isinstance(secret_key, str) or not secret_key:
+        raise RuntimeError(
+            "SECRET_KEY must be configured in production."
+        )
+
+    if secret_key != secret_key.strip():
+        raise RuntimeError(
+            "SECRET_KEY must not contain leading or trailing whitespace."
+        )
+
+    if len(secret_key) < 32:
+        raise RuntimeError(
+            "Production SECRET_KEY must contain at least 32 characters."
+        )
+
+    placeholders = {
+        "password",
+        "password123",
+        "change-me",
+        "changeme",
+        "secret",
+        "your-secret-key",
+        "your-secret-key-here",
+        "development",
+        "test",
+        "test-secret-key",
+    }
+
+    if secret_key.lower() in placeholders:
+        raise RuntimeError(
+            "Production SECRET_KEY must not be a placeholder value."
+        )
+
+    if len(set(secret_key)) == 1:
+        raise RuntimeError(
+            "Production SECRET_KEY must not consist of one repeated character."
+        )
+
+    return secret_key
+
+
+if APP_ENV == "production":
+    app.config["SECRET_KEY"] = validate_production_secret_key(
+        SECRET_KEY
+    )
+else:
+    app.config["SECRET_KEY"] = (
+        SECRET_KEY or secrets.token_hex(32)
+    )
 
 
 # --------------------------------------------------
