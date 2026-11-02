@@ -2,7 +2,12 @@ __pycache__/
 *.py[cod]
 .venv/
 .env
+
 *.db
+*.db.*
 *.sqlite3
+*.backup
+*.pre_csv_fix
+
 exports/*
 !exports/.gitkeep
