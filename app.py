@@ -142,6 +142,7 @@ app.config["SESSION_COOKIE_SECURE"] = (
 )
 
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=12)
+app.config["SESSION_REFRESH_EACH_REQUEST"] = False
 
 
 # --------------------------------------------------

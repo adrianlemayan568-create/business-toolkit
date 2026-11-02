@@ -681,5 +681,18 @@ class TestProductionSecretKeyValidation(unittest.TestCase):
         self.assertEqual(result, secret)
 
 
+class TestSessionConfiguration(unittest.TestCase):
+
+    def test_permanent_sessions_do_not_refresh_on_each_request(self):
+        self.assertFalse(
+            app.config["SESSION_REFRESH_EACH_REQUEST"]
+        )
+
+        self.assertEqual(
+            app.config["PERMANENT_SESSION_LIFETIME"].total_seconds(),
+            12 * 60 * 60
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
