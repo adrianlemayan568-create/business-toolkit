@@ -3,7 +3,7 @@ import re
 import unittest
 from unittest.mock import patch
 
-from app import app
+from app import app, limiter
 
 
 TEST_USER_ID = 7
@@ -25,6 +25,7 @@ TEST_COMPARISON = {
 class FlaskAppTestCase(unittest.TestCase):
 
     def setUp(self):
+        limiter.reset()
         app.config.update(
             TESTING=True,
             WTF_CSRF_ENABLED=True,
@@ -108,6 +109,36 @@ class FlaskAppTestCase(unittest.TestCase):
 # --------------------------------------------------
 
 class TestAuthentication(FlaskAppTestCase):
+
+    @patch("app.authenticate_user", return_value=None)
+    def test_login_rate_limit_blocks_sixth_attempt(self, mock_authenticate):
+        client = app.test_client()
+        token = self.get_login_csrf_token(client)
+
+        for attempt in range(5):
+            response = client.post("/login", data={
+                "email": TEST_EMAIL,
+                "password": "wrong-password",
+                "csrf_token": token
+            })
+            self.assertEqual(response.status_code, 401)
+
+        response = client.post("/login", data={
+            "email": TEST_EMAIL,
+            "password": "wrong-password",
+            "csrf_token": token
+        })
+
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(mock_authenticate.call_count, 5)
+
+    def test_login_get_is_not_rate_limited(self):
+        client = app.test_client()
+
+        for attempt in range(7):
+            response = client.get("/login")
+            self.assertEqual(response.status_code, 200)
+
 
     def test_login_page_loads(self):
         client = app.test_client()

@@ -17,6 +17,8 @@ from flask import (
 )
 
 from flask_wtf.csrf import CSRFProtect
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 from database.db import verify_database_schema
 
@@ -90,6 +92,20 @@ app.config["SESSION_COOKIE_SECURE"] = (
 )
 
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=12)
+
+
+# --------------------------------------------------
+# RATE LIMITING
+# --------------------------------------------------
+
+limiter = Limiter(
+    key_func=get_remote_address,
+    app=app,
+    default_limits=[],
+    storage_uri="memory://",
+    strategy="fixed-window",
+    headers_enabled=True
+)
 
 
 # --------------------------------------------------
@@ -175,6 +191,7 @@ def login_required(view):
 # --------------------------------------------------
 
 @app.route("/login", methods=["GET", "POST"])
+@limiter.limit("5 per minute", methods=["POST"])
 def login():
 
     # Already authenticated users go to the dashboard.
