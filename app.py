@@ -167,6 +167,43 @@ csrf = CSRFProtect(app)
 
 
 # --------------------------------------------------
+# HTTP SECURITY HEADERS
+# --------------------------------------------------
+
+@app.after_request
+def add_security_headers(response):
+    """
+    Add baseline browser security headers to every response.
+    """
+
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+
+    response.headers["Referrer-Policy"] = (
+        "strict-origin-when-cross-origin"
+    )
+
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "base-uri 'self'; "
+        "object-src 'none'; "
+        "frame-ancestors 'self'; "
+        "form-action 'self'; "
+        "script-src 'self'; "
+        "style-src 'self'; "
+        "img-src 'self' data:"
+    )
+
+    response.headers["Permissions-Policy"] = (
+        "camera=(), "
+        "microphone=(), "
+        "geolocation=()"
+    )
+
+    return response
+
+
+# --------------------------------------------------
 # DATABASE VERIFICATION
 # --------------------------------------------------
 

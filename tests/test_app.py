@@ -694,5 +694,44 @@ class TestSessionConfiguration(unittest.TestCase):
         )
 
 
+class TestSecurityHeaders(FlaskAppTestCase):
+
+    def test_security_headers_are_present(self):
+        response = self.client.get("/login")
+
+        self.assertEqual(
+            response.headers.get("X-Content-Type-Options"),
+            "nosniff"
+        )
+        self.assertEqual(
+            response.headers.get("X-Frame-Options"),
+            "SAMEORIGIN"
+        )
+        self.assertEqual(
+            response.headers.get("Referrer-Policy"),
+            "strict-origin-when-cross-origin"
+        )
+        self.assertEqual(
+            response.headers.get("Content-Security-Policy"),
+            "default-src 'self'; base-uri 'self'; object-src 'none'; "
+            "frame-ancestors 'self'; form-action 'self'; "
+            "script-src 'self'; style-src 'self'; img-src 'self' data:"
+        )
+        self.assertEqual(
+            response.headers.get("Permissions-Policy"),
+            "camera=(), microphone=(), geolocation=()"
+        )
+
+    def test_delete_confirmation_javascript_is_served(self):
+        response = self.client.get("/static/js/app.js")
+        self.addCleanup(response.close)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            b"Are you sure you want to delete this expense?",
+            response.data
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

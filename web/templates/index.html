@@ -265,7 +265,6 @@
                                             action="{{ url_for('delete_expense_route', expense_id=expense['id']) }}"
                                             method="POST"
                                             class="delete-form"
-                                            onsubmit="return confirm('Are you sure you want to delete this expense?');"
                                         >
                                             <input type="hidden"
                                                    name="csrf_token"
@@ -296,6 +295,11 @@
     <footer>
         <p>Business Expense Tracker &copy; 2026</p>
     </footer>
+
+    <script
+        src="{{ url_for('static', filename='js/app.js') }}"
+        defer
+    ></script>
 
 </body>
 </html>
