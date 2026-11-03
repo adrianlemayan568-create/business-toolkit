@@ -1,4 +1,5 @@
 
+import os
 import sqlite3
 from pathlib import Path
 
@@ -9,7 +10,17 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-DATABASE_PATH = BASE_DIR / "database" / "business.db"
+_configured_database_path = os.environ.get("DATABASE_PATH")
+
+if _configured_database_path:
+    DATABASE_PATH = Path(_configured_database_path).expanduser()
+
+    if not DATABASE_PATH.is_absolute():
+        raise RuntimeError(
+            "DATABASE_PATH must be an absolute path."
+        )
+else:
+    DATABASE_PATH = BASE_DIR / "database" / "business.db"
 
 SCHEMA_PATH = BASE_DIR / "database" / "schema.sql"
 

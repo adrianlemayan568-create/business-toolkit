@@ -1,6 +1,7 @@
 
 import os
 import secrets
+from urllib.parse import urlsplit
 from datetime import date, timedelta
 from functools import wraps
 
@@ -152,11 +153,42 @@ app.config["MAX_CONTENT_LENGTH"] = 16 * 1024
 # RATE LIMITING
 # --------------------------------------------------
 
+# --------------------------------------------------
+# RATE LIMIT STORAGE
+# --------------------------------------------------
+
+REDIS_URL = os.environ.get("REDIS_URL", "").strip()
+
+if APP_ENV == "production":
+    if not REDIS_URL:
+        raise RuntimeError(
+            "REDIS_URL must be configured in production."
+        )
+
+    redis_parts = urlsplit(REDIS_URL)
+
+    if (
+        redis_parts.scheme not in {"redis", "rediss"}
+        or not redis_parts.hostname
+    ):
+        raise RuntimeError(
+            "REDIS_URL must be a valid redis:// or rediss:// URL."
+        )
+
+    RATE_LIMIT_STORAGE_URI = REDIS_URL
+else:
+    RATE_LIMIT_STORAGE_URI = "memory://"
+
+
+# --------------------------------------------------
+# RATE LIMITING
+# --------------------------------------------------
+
 limiter = Limiter(
     key_func=get_remote_address,
     app=app,
     default_limits=[],
-    storage_uri="memory://",
+    storage_uri=RATE_LIMIT_STORAGE_URI,
     strategy="fixed-window",
     headers_enabled=True
 )
