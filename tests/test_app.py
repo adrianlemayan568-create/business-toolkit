@@ -694,6 +694,12 @@ class TestSessionConfiguration(unittest.TestCase):
         )
 
 
+class TestRequestSizeConfiguration(unittest.TestCase):
+
+    def test_maximum_request_body_is_16_kib(self):
+        self.assertEqual(app.config["MAX_CONTENT_LENGTH"], 16 * 1024)
+
+
 class TestSecurityHeaders(FlaskAppTestCase):
 
     def test_security_headers_are_present(self):

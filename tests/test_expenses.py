@@ -511,5 +511,76 @@ class TestExpenses(unittest.TestCase):
                     )
 
 
+    # ------------------------------------------
+    # INPUT LIMIT TESTS
+    # ------------------------------------------
+
+    def test_add_accepts_maximum_amount(self):
+        expense_id = expenses.add_expense(
+            self.user1, "999999999.99", "Food"
+        )
+        record = expenses.get_expense(self.user1, expense_id)
+        self.assertEqual(record["amount_cents"], 99999999999)
+
+    def test_add_rejects_amount_above_maximum(self):
+        with self.assertRaises(ValueError):
+            expenses.add_expense(self.user1, "1000000000.00", "Food")
+
+    def test_add_rejects_category_over_50_characters(self):
+        with self.assertRaises(ValueError):
+            expenses.add_expense(self.user1, 100, "A" * 51)
+
+    def test_add_accepts_category_of_50_characters(self):
+        expense_id = expenses.add_expense(self.user1, 100, "A" * 50)
+        record = expenses.get_expense(self.user1, expense_id)
+        self.assertEqual(len(record["category"]), 50)
+
+    def test_add_rejects_description_over_500_characters(self):
+        with self.assertRaises(ValueError):
+            expenses.add_expense(self.user1, 100, "Food", "D" * 501)
+
+    def test_add_rejects_non_text_fields(self):
+        for category, description in (
+            (None, ""), (123, ""), ("Food", None), ("Food", 123)
+        ):
+            with self.subTest(category=category, description=description):
+                with self.assertRaises(ValueError):
+                    expenses.add_expense(
+                        self.user1, 100, category, description
+                    )
+
+    def test_update_rejects_amount_above_maximum(self):
+        expense_id = expenses.add_expense(self.user1, 100, "Food")
+        with self.assertRaises(ValueError):
+            expenses.update_expense(
+                self.user1, expense_id, "1000000000.00", "Food"
+            )
+
+    def test_update_rejects_category_over_50_characters(self):
+        expense_id = expenses.add_expense(self.user1, 100, "Food")
+        with self.assertRaises(ValueError):
+            expenses.update_expense(
+                self.user1, expense_id, 100, "A" * 51
+            )
+
+    def test_update_rejects_description_over_500_characters(self):
+        expense_id = expenses.add_expense(self.user1, 100, "Food")
+        with self.assertRaises(ValueError):
+            expenses.update_expense(
+                self.user1, expense_id, 100, "Food", "D" * 501
+            )
+
+    def test_update_rejects_non_text_fields(self):
+        expense_id = expenses.add_expense(self.user1, 100, "Food")
+        for category, description in (
+            (None, ""), (123, ""), ("Food", None), ("Food", 123)
+        ):
+            with self.subTest(category=category, description=description):
+                with self.assertRaises(ValueError):
+                    expenses.update_expense(
+                        self.user1, expense_id, 100, category, description
+                    )
+
+
 if __name__ == "__main__":
     unittest.main()

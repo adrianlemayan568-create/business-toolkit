@@ -19,6 +19,58 @@ def validate_user_id(user_id):
         raise ValueError("Invalid user ID.")
 
 
+MAX_EXPENSE_AMOUNT = Decimal("999999999.99")
+MAX_CATEGORY_LENGTH = 50
+MAX_DESCRIPTION_LENGTH = 500
+
+
+def validate_expense_fields(amount, category, description="", expense_date=None):
+    """Validate and normalize all user-supplied expense fields."""
+
+    try:
+        amount = Decimal(str(amount))
+    except (InvalidOperation, ValueError, TypeError):
+        raise ValueError("Invalid expense amount.")
+
+    if not amount.is_finite() or amount <= 0:
+        raise ValueError("Amount must be greater than zero.")
+
+    if amount > MAX_EXPENSE_AMOUNT:
+        raise ValueError("Amount cannot exceed KSh 999,999,999.99.")
+
+    cents = amount * 100
+    if cents != cents.to_integral_value():
+        raise ValueError("Amount cannot have more than two decimal places.")
+
+    amount_cents = int(cents)
+
+    if not isinstance(category, str):
+        raise ValueError("Category must be text.")
+    category = category.strip()
+    if not category:
+        raise ValueError("Category cannot be empty.")
+    if len(category) > MAX_CATEGORY_LENGTH:
+        raise ValueError("Category cannot exceed 50 characters.")
+
+    if not isinstance(description, str):
+        raise ValueError("Description must be text.")
+    description = description.strip()
+    if len(description) > MAX_DESCRIPTION_LENGTH:
+        raise ValueError("Description cannot exceed 500 characters.")
+
+    if expense_date is None:
+        expense_date = date.today().isoformat()
+    else:
+        if not isinstance(expense_date, str):
+            raise ValueError("Date must use YYYY-MM-DD format.")
+        try:
+            expense_date = date.fromisoformat(expense_date).isoformat()
+        except (ValueError, TypeError):
+            raise ValueError("Date must use YYYY-MM-DD format.")
+
+    return amount_cents, category, description, expense_date
+
+
 def add_expense(
     user_id,
     amount,
@@ -30,33 +82,9 @@ def add_expense(
 
     validate_user_id(user_id)
 
-    try:
-        amount = Decimal(str(amount))
-    except (InvalidOperation, ValueError):
-        raise ValueError("Invalid expense amount.")
-
-    if not amount.is_finite() or amount <= 0:
-        raise ValueError("Amount must be greater than zero.")
-
-    cents = amount * 100
-
-    if cents != cents.to_integral_value():
-        raise ValueError("Amount cannot have more than two decimal places.")
-
-    amount_cents = int(cents)
-
-    category = category.strip()
-
-    if not category:
-        raise ValueError("Category cannot be empty.")
-
-    if expense_date is None:
-        expense_date = date.today().isoformat()
-    else:
-        try:
-            expense_date = date.fromisoformat(expense_date).isoformat()
-        except (ValueError, TypeError):
-            raise ValueError("Date must use YYYY-MM-DD format.")
+    amount_cents, category, description, expense_date = (
+        validate_expense_fields(amount, category, description, expense_date)
+    )
 
     connection = get_connection()
 
@@ -76,7 +104,7 @@ def add_expense(
                 user_id,
                 amount_cents,
                 category,
-                description.strip(),
+                description,
                 expense_date
             )
         )
@@ -325,33 +353,9 @@ def update_expense(
     ):
         raise ValueError("Invalid expense ID.")
 
-    try:
-        amount = Decimal(str(amount))
-    except (InvalidOperation, ValueError):
-        raise ValueError("Invalid expense amount.")
-
-    if not amount.is_finite() or amount <= 0:
-        raise ValueError("Amount must be greater than zero.")
-
-    cents = amount * 100
-
-    if cents != cents.to_integral_value():
-        raise ValueError("Amount cannot have more than two decimal places.")
-
-    amount_cents = int(cents)
-
-    category = category.strip()
-
-    if not category:
-        raise ValueError("Category cannot be empty.")
-
-    if expense_date is None:
-        expense_date = date.today().isoformat()
-    else:
-        try:
-            expense_date = date.fromisoformat(expense_date).isoformat()
-        except (ValueError, TypeError):
-            raise ValueError("Date must use YYYY-MM-DD format.")
+    amount_cents, category, description, expense_date = (
+        validate_expense_fields(amount, category, description, expense_date)
+    )
 
     connection = get_connection()
 
@@ -368,7 +372,7 @@ def update_expense(
             (
                 amount_cents,
                 category,
-                description.strip(),
+                description,
                 expense_date,
                 expense_id,
                 user_id

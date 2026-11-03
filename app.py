@@ -144,6 +144,9 @@ app.config["SESSION_COOKIE_SECURE"] = (
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=12)
 app.config["SESSION_REFRESH_EACH_REQUEST"] = False
 
+# Maximum incoming request body: 16 KiB.
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024
+
 
 # --------------------------------------------------
 # RATE LIMITING
