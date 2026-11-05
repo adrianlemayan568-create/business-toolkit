@@ -153,29 +153,60 @@ def verify_database_schema():
 # --------------------------------------------------
 # DATABASE INITIALIZATION
 # --------------------------------------------------
-
 def initialize_database():
     """
     Initialize a fresh database using the current schema.
 
-    This function is for initial setup only.
-    It does not perform migrations.
+    Refuses to overwrite an existing database containing
+    application tables or a non-zero schema version.
     """
+
+    if DATABASE_PATH.exists():
+        connection = sqlite3.connect(DATABASE_PATH)
+
+        try:
+            existing_tables = connection.execute(
+                """
+                SELECT name
+                FROM sqlite_master
+                WHERE type = 'table'
+                AND name NOT LIKE 'sqlite_%'
+                """
+            ).fetchall()
+
+            version = connection.execute(
+                "PRAGMA user_version"
+            ).fetchone()[0]
+
+            if existing_tables or version != 0:
+                raise RuntimeError(
+                    "Database already contains data or has "
+                    "a schema version. Initialization refused."
+                )
+
+        finally:
+            connection.close()
 
     connection = get_connection()
 
     try:
+        schema = SCHEMA_PATH.read_text(encoding="utf-8")
+
         connection.executescript(
-            SCHEMA_PATH.read_text(encoding="utf-8")
+            "BEGIN IMMEDIATE;\n"
+            + schema
+            + f"\nPRAGMA user_version = {EXPECTED_SCHEMA_VERSION};\n"
+            + "COMMIT;"
         )
 
-        connection.commit()
+    except Exception:
+        if connection.in_transaction:
+            connection.rollback()
+        raise
 
     finally:
         connection.close()
 
-
-# --------------------------------------------------
 # DIRECT EXECUTION
 # --------------------------------------------------
 
